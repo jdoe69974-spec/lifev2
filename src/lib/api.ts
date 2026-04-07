@@ -1,4 +1,4 @@
-import { API_URL_TEXT, API_URL_TTS } from './constants';
+import { getApiUrlText, getApiUrlTts } from './constants';
 
 export interface PCRData {
   chiefComplaint?: string;
@@ -97,7 +97,7 @@ export async function processTranscript(
     generationConfig: { responseMimeType: "application/json", responseSchema: pcrSchema },
   };
 
-  const response = await fetchWithRetry(API_URL_TEXT, {
+  const response = await fetchWithRetry(getApiUrlText(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payloadText),
@@ -110,7 +110,7 @@ export async function processTranscript(
 
   // Generate recommendation
   const recQuery = `Based on this structured report for a scene in ${county}: ${JSON.stringify(pcr)}. What is a single, concise (under 15 words) clinical recommendation for the EMS crew? Ensure the recommendation aligns with the Arkansas guidelines.`;
-  const recResponse = await fetchWithRetry(API_URL_TEXT, {
+  const recResponse = await fetchWithRetry(getApiUrlText(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -135,7 +135,7 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
     generationConfig: { responseMimeType: "application/json", responseSchema: dosageSchema },
   };
 
-  const response = await fetchWithRetry(API_URL_TEXT, {
+  const response = await fetchWithRetry(getApiUrlText(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -191,7 +191,7 @@ export async function generateTTS(text: string): Promise<string> {
     },
   };
 
-  const response = await fetchWithRetry(API_URL_TTS, {
+  const response = await fetchWithRetry(getApiUrlTts(), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

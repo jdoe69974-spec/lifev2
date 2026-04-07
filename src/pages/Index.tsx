@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Language, t } from '@/lib/translations';
 import { processTranscript, generateTTS, PCRData, SessionEntry } from '@/lib/api';
+import { setApiKey, getApiKey } from '@/lib/constants';
 import { AppHeader } from '@/components/AppHeader';
 import { VoiceInput } from '@/components/VoiceInput';
 import { AIGuidance } from '@/components/AIGuidance';
@@ -8,6 +9,7 @@ import { DoseCalculator } from '@/components/DoseCalculator';
 import { PCRTemplate } from '@/components/PCRTemplate';
 import { SessionLog } from '@/components/SessionLog';
 import { CountySelect } from '@/components/CountySelect';
+import { Key } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -27,8 +29,19 @@ export default function Index() {
   const [sessionHistory, setSessionHistory] = useState<SessionEntry[]>([]);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [apiKeySaved, setApiKeySaved] = useState(false);
 
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('gemini_api_key');
+    if (saved) {
+      setApiKeyInput(saved);
+      setApiKey(saved);
+      setApiKeySaved(true);
+    }
+  }, []);
 
   useEffect(() => {
     setStatus(t(lang, 'statusDefault'));
@@ -43,6 +56,21 @@ export default function Index() {
     }
   }, [dark]);
 
+  const handleSaveApiKey = () => {
+    if (apiKeyInput.trim()) {
+      setApiKey(apiKeyInput.trim());
+      localStorage.setItem('gemini_api_key', apiKeyInput.trim());
+      setApiKeySaved(true);
+    }
+  };
+
+  const handleClearApiKey = () => {
+    setApiKey('');
+    localStorage.removeItem('gemini_api_key');
+    setApiKeyInput('');
+    setApiKeySaved(false);
+  };
+
   const getFullContext = useCallback((current: string) => {
     let ctx = '';
     [...sessionHistory].reverse().forEach((entry, i) => {
@@ -53,6 +81,10 @@ export default function Index() {
   }, [sessionHistory]);
 
   const handleProcess = useCallback(async (text: string) => {
+    if (!getApiKey()) {
+      setStatus('⚠️ Please enter your Gemini API key first.');
+      return;
+    }
     setStatus(t(lang, 'aiProcessing'));
     try {
       const fullContext = getFullContext(text);
@@ -93,6 +125,11 @@ export default function Index() {
   };
 
   const toggleRecording = useCallback(() => {
+    if (!getApiKey()) {
+      setStatus('⚠️ Please enter your Gemini API key first.');
+      return;
+    }
+
     if (!('webkitSpeechRecognition' in window)) {
       setStatus(t(lang, 'speechNotSupported'));
       return;
@@ -148,6 +185,49 @@ export default function Index() {
           onToggleLang={() => setLang(l => l === 'en' ? 'es' : 'en')}
           onToggleDark={() => setDark(d => !d)}
         />
+
+        {/* API Key Input */}
+        <div className="mb-6 p-4 bg-card rounded-xl shadow-lg border border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <Key className="w-4 h-4 text-accent" />
+            <h3 className="text-sm font-semibold text-foreground">Gemini API Key</h3>
+            {apiKeySaved && (
+              <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">✓ Connected</span>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              value={apiKeyInput}
+              onChange={e => setApiKeyInput(e.target.value)}
+              placeholder="Paste your Gemini API key here..."
+              className="flex-1 p-2 bg-muted border border-border rounded-lg text-foreground text-sm focus:ring-2 focus:ring-accent focus:outline-none placeholder:text-muted-foreground"
+            />
+            {!apiKeySaved ? (
+              <button
+                onClick={handleSaveApiKey}
+                disabled={!apiKeyInput.trim()}
+                className="px-4 py-2 text-sm font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-40"
+              >
+                Save
+              </button>
+            ) : (
+              <button
+                onClick={handleClearApiKey}
+                className="px-4 py-2 text-sm font-bold rounded-lg bg-destructive text-destructive-foreground hover:opacity-90 transition-opacity"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Get your key from{' '}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-accent underline">
+              Google AI Studio
+            </a>
+            . Your key is stored locally in your browser.
+          </p>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-6">
