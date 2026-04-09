@@ -27,16 +27,17 @@ export default function Index() {
   const [sessionHistory, setSessionHistory] = useState<SessionEntry[]>([]);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  
+  // NEW: State to track if an API call is already in progress
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const recognitionRef = useRef<any>(null);
 
-  // Initialize status
   useEffect(() => {
     setStatus(t(lang, 'statusDefault'));
     setTranscript(t(lang, 'waitingTranscript'));
   }, [lang]);
 
-  // Dark mode toggle
   useEffect(() => {
     if (dark) {
       document.documentElement.classList.add('dark');
@@ -45,10 +46,8 @@ export default function Index() {
     }
   }, [dark]);
 
-  // Helper to get chronological context
   const getFullContext = useCallback((current: string) => {
     let ctx = '';
-    // Reverse creates a chronological flow (oldest to newest)
     [...sessionHistory].reverse().forEach((entry, i) => {
       ctx += `[REPORT ${i + 1}]: ${entry.transcript}\n---\n`;
     });
@@ -69,13 +68,15 @@ export default function Index() {
   };
 
   const handleProcess = useCallback(async (text: string) => {
-    if (!text.trim()) return;
+    // FIX: Check if we are already processing to prevent duplicate calls (429 errors)
+    if (!text.trim() || isProcessing) return;
 
+    setIsProcessing(true); // LOCK
     setStatus(t(lang, 'aiProcessing'));
+    
     try {
       const fullContext = getFullContext(text);
       
-      // API call now returns both pcr and recommendation in one go
       const { pcr: newPcr, recommendation: rec } = await processTranscript(
         fullContext, 
         county || 'Unspecified Arkansas County'
@@ -100,7 +101,6 @@ export default function Index() {
 
       setSessionHistory(prev => [entry, ...prev].slice(0, 10));
 
-      // Generate Voice
       setStatus(t(lang, 'ttsGenerating'));
       const url = await generateTTS(rec);
       setAudioUrl(url);
@@ -110,8 +110,11 @@ export default function Index() {
     } catch (e: any) {
       console.error("Processing error:", e);
       setStatus(`${t(lang, 'aiFailed')}: ${e.message}`);
+    } finally {
+      // UNLOCK after a safety delay (2 seconds) to avoid immediate re-triggers
+      setTimeout(() => setIsProcessing(false), 2000);
     }
-  }, [lang, county, getFullContext]);
+  }, [lang, county, getFullContext, isProcessing]);
 
   const toggleRecording = useCallback(() => {
     if (!('webkitSpeechRecognition' in window)) {
@@ -126,7 +129,7 @@ export default function Index() {
 
     const recognition = new window.webkitSpeechRecognition();
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = false; // Keep this false to avoid intermediate spam
     recognition.lang = lang === 'es' ? 'es-US' : 'en-US';
 
     recognition.onstart = () => {
@@ -141,7 +144,7 @@ export default function Index() {
       const text = event.results[0][0].transcript;
       setTranscript(text);
       setStatus(t(lang, 'transcribed'));
-      // This sends the text to the AI once
+      // This will only trigger the API call if isProcessing is false
       handleProcess(text);
     };
 
@@ -184,6 +187,7 @@ export default function Index() {
                 onToggle={toggleRecording}
               />
             </div>
+            {/* Displaying isProcessing status helps debug if the lock is working */}
             <AIGuidance
               lang={lang}
               recommendation={recommendation}
