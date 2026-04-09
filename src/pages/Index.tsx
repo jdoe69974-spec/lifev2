@@ -28,7 +28,7 @@ export default function Index() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // NEW: State to track if an API call is already in progress
+  // State to track if an API call is already in progress to block duplicate triggers
   const [isProcessing, setIsProcessing] = useState(false);
 
   const recognitionRef = useRef<any>(null);
@@ -68,10 +68,10 @@ export default function Index() {
   };
 
   const handleProcess = useCallback(async (text: string) => {
-    // FIX: Check if we are already processing to prevent duplicate calls (429 errors)
+    // GUARD: Stop immediately if text is empty or an API call is already running
     if (!text.trim() || isProcessing) return;
 
-    setIsProcessing(true); // LOCK
+    setIsProcessing(true); // ENGAGE LOCK
     setStatus(t(lang, 'aiProcessing'));
     
     try {
@@ -101,6 +101,10 @@ export default function Index() {
 
       setSessionHistory(prev => [entry, ...prev].slice(0, 10));
 
+      // 🛑 FIX FOR FREE TIER CONCURRENCY 429: Give the Google API 2 seconds to cool down 
+      // between finishing the Text Generation and starting the TTS Audio Generation.
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
       setStatus(t(lang, 'ttsGenerating'));
       const url = await generateTTS(rec);
       setAudioUrl(url);
@@ -111,7 +115,7 @@ export default function Index() {
       console.error("Processing error:", e);
       setStatus(`${t(lang, 'aiFailed')}: ${e.message}`);
     } finally {
-      // UNLOCK after a safety delay (2 seconds) to avoid immediate re-triggers
+      // RELEASE LOCK after a safety delay to prevent immediate accidental triggers
       setTimeout(() => setIsProcessing(false), 2000);
     }
   }, [lang, county, getFullContext, isProcessing]);
@@ -129,7 +133,7 @@ export default function Index() {
 
     const recognition = new window.webkitSpeechRecognition();
     recognition.continuous = false;
-    recognition.interimResults = false; // Keep this false to avoid intermediate spam
+    recognition.interimResults = false; // Kept false to avoid mid-sentence API spam
     recognition.lang = lang === 'es' ? 'es-US' : 'en-US';
 
     recognition.onstart = () => {
@@ -144,7 +148,7 @@ export default function Index() {
       const text = event.results[0][0].transcript;
       setTranscript(text);
       setStatus(t(lang, 'transcribed'));
-      // This will only trigger the API call if isProcessing is false
+      // Send to API (the isProcessing guard will protect us here)
       handleProcess(text);
     };
 
@@ -187,7 +191,6 @@ export default function Index() {
                 onToggle={toggleRecording}
               />
             </div>
-            {/* Displaying isProcessing status helps debug if the lock is working */}
             <AIGuidance
               lang={lang}
               recommendation={recommendation}
