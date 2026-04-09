@@ -47,34 +47,37 @@ const dosageSchema = {
 };
 
 async function fetchWithRetry(url: string, options: RequestInit, fastRetry = false): Promise<Response> {
-  const maxRetries = 3;
+  const maxRetries = 5;
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch(url, options);
       if (response.ok) return response;
-      if (response.status === 429) {
-        const delay = fastRetry ? 1000 * (2 ** i) : 5000 * (2 ** i);
-        if (i < maxRetries - 1) {
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error(`API rate limit exceeded after ${maxRetries} retries.`);
-      }
+      
       const errorBody = await response.text();
-      let errorMessage = `API request failed with status ${response.status}.`;
+      let errorMessage = `Service request failed (${response.status}).`;
       try {
         const errorJson = JSON.parse(errorBody);
         errorMessage = errorJson.error?.message || errorMessage;
       } catch { /* ignore */ }
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+
+      if (response.status === 429) {
+        const delay = fastRetry ? 2000 * (2 ** i) : 8000 * (2 ** i);
+        if (i < maxRetries - 1) {
+          console.warn(`Rate limited, retrying in ${delay / 1000}s... (attempt ${i + 1}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        throw new Error(`Service is busy. Please wait a moment and try again.`);
+      }
+      if (response.status >= 400 && response.status < 500) {
         throw new Error(errorMessage);
       }
       if (i === maxRetries - 1) throw new Error(errorMessage);
-      const delay = fastRetry ? 1000 * (2 ** i) : 5000 * (2 ** i);
+      const delay = fastRetry ? 2000 * (2 ** i) : 5000 * (2 ** i);
       await new Promise(r => setTimeout(r, delay));
     } catch (error) {
       if (i === maxRetries - 1) throw error;
-      const delay = fastRetry ? 1000 * (2 ** i) : 5000 * (2 ** i);
+      const delay = fastRetry ? 2000 * (2 ** i) : 5000 * (2 ** i);
       await new Promise(r => setTimeout(r, delay));
     }
   }
