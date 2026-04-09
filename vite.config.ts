@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 export default defineConfig({
-  base: "/lifev2/", 
+  base: "./", // Changed from "/lifev2/" to "./" to use relative paths
   server: {
     host: "::",
     port: 8080,
