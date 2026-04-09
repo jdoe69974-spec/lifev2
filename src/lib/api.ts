@@ -23,6 +23,7 @@ export interface SessionEntry {
   interventions: string;
 }
 
+// FIXED: Added clinicalRecommendation to the schema to combine 2 API calls into 1
 const pcrSchema = {
   type: "OBJECT",
   properties: {
@@ -31,8 +32,10 @@ const pcrSchema = {
     initialVitals: { type: "STRING", description: "The patient's first recorded vital signs and GCS." },
     interventions: { type: "ARRAY", items: { type: "STRING" }, description: "A comprehensive list of ALL treatments performed." },
     triageRecommendation: { type: "STRING", description: "The suggested destination based on the field findings." },
+    clinicalRecommendation: { type: "STRING", description: "A single, concise (under 15 words) clinical recommendation for the EMS crew based on Arkansas guidelines." },
   },
-  propertyOrdering: ["chiefComplaint", "mechanismOfInjury", "initialVitals", "interventions", "triageRecommendation"],
+  required: ["chiefComplaint", "clinicalRecommendation"],
+  propertyOrdering: ["chiefComplaint", "mechanismOfInjury", "initialVitals", "interventions", "triageRecommendation", "clinicalRecommendation"],
 };
 
 const dosageSchema = {
@@ -84,18 +87,18 @@ async function fetchWithRetry(url: string, options: RequestInit, fastRetry = fal
   throw new Error("Max retries exceeded");
 }
 
+// FIXED: Consolidated into a single AI request
 export async function processTranscript(
   fullContext: string,
   county: string
 ): Promise<{ pcr: PCRData; recommendation: string }> {
-  const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. Your goal is to maintain a continuous, evolving Pre-Hospital Care Report (PCR) based on sequential verbal updates from the field.
-  
-  ***SYNTHESIS INSTRUCTION:*** Analyze the complete chronological narration provided below. Synthesize ALL information across all reports into a single, comprehensive, and up-to-date JSON structure. Vitals should reflect the most recent, complete set.
-  
-  The overall patient encounter context is:\n\n${fullContext}`;
+  const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
+  Synthesize the complete chronological narration provided into a single, comprehensive JSON structure. 
+  Vitals should reflect the most recent set. You MUST also provide a concise clinical recommendation (under 15 words) 
+  inside the JSON that aligns with Arkansas protocols.`;
 
   const payloadText = {
-    contents: [{ parts: [{ text: `Synthesize the full patient encounter history and provide the current, complete PCR in JSON format. The service location is ${county}.` }] }],
+    contents: [{ parts: [{ text: `Synthesize history and provide the current PCR and clinical recommendation. Encounter context: ${fullContext}` }] }],
     systemInstruction: { parts: [{ text: systemPrompt }] },
     generationConfig: { responseMimeType: "application/json", responseSchema: pcrSchema },
   };
@@ -109,28 +112,26 @@ export async function processTranscript(
   const result = await response.json();
   const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!jsonText) throw new Error("AI response content missing or malformed.");
-  const pcr: PCRData = JSON.parse(jsonText);
+  
+  const rawData = JSON.parse(jsonText);
 
-  // Generate recommendation
-  const recQuery = `Based on this structured report for a scene in ${county}: ${JSON.stringify(pcr)}. What is a single, concise (under 15 words) clinical recommendation for the EMS crew? Ensure the recommendation aligns with the Arkansas guidelines.`;
-  const recResponse = await fetchWithRetry(API_URL_TEXT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: recQuery }] }],
-      systemInstruction: { parts: [{ text: "You are a concise clinical advisor. Provide only the recommendation text." }] },
-      tools: [{ google_search: {} }],
-    }),
-  });
-  const recResult = await recResponse.json();
-  const recommendation = recResult.candidates?.[0]?.content?.parts?.[0]?.text || "Report analyzed. No critical recommendations at this time.";
+  // Split the combined response back into the expected objects
+  const pcr: PCRData = {
+    chiefComplaint: rawData.chiefComplaint,
+    mechanismOfInjury: rawData.mechanismOfInjury,
+    initialVitals: rawData.initialVitals,
+    interventions: rawData.interventions,
+    triageRecommendation: rawData.triageRecommendation,
+  };
+
+  const recommendation = rawData.clinicalRecommendation || "Report analyzed. No critical recommendations.";
 
   return { pcr, recommendation };
 }
 
 export async function calculateDose(drug: string, weightKg: number, weightLbs: number): Promise<DosageData> {
-  const query = `Calculate the pediatric dose for ${drug} for a patient who weighs ${weightKg} kg (converted from ${weightLbs} lbs). Base your calculation on standard PALS/APLS weight-based protocols and common EMS protocols.`;
-  const systemPrompt = `You are a certified Paramedic AI assistant. Your role is to provide quick, accurate, weight-based pediatric drug calculations. You MUST use the provided weight in kilograms (${weightKg} kg) to calculate the dose.`;
+  const query = `Calculate the pediatric dose for ${drug} for a patient who weighs ${weightKg} kg (converted from ${weightLbs} lbs). Base your calculation on standard PALS/APLS weight-based protocols.`;
+  const systemPrompt = `You are a certified Paramedic AI assistant. Use the provided weight in kilograms (${weightKg} kg) to calculate the dose.`;
 
   const payload = {
     contents: [{ parts: [{ text: query }] }],
