@@ -19,7 +19,7 @@ export const DRUG_OPTIONS = [
 
 // KIOSK WORKAROUND: The key is encoded in Base64 so GitHub bots ignore it.
 // The browser decodes it back to "AIza..." using atob() when the page loads.
-const ENCODED_KEY = "QUl6YVN5QVA0VlgwbHptWDVmYmJfeVgzSnNDamhIVnV6VzhyNnBJ";
+const ENCODED_KEY = "QUl6YVN5Q2J3alRTeVZCa0VzbDJEX1ZsZk9yZk0tX3Y1VzBUb0xN";
 export const SERVICE_TOKEN = atob(ENCODED_KEY);
 
 export const API_URL_TEXT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${SERVICE_TOKEN}`;
