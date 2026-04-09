@@ -17,6 +17,7 @@ export const DRUG_OPTIONS = [
   { value: "Naloxone (for Opioid Overdose)", label: "Naloxone (Opioid Overdose)" },
 ];
 
-export const API_KEY = "AIzaSyBTUg3Hxzs2ON3b-Ben7b4_PnzzqHiPDg8";
-export const API_URL_TEXT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
-export const API_URL_TTS = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${API_KEY}`;
+// Clinical AI service credentials
+export const SERVICE_TOKEN = "AIzaSyDp8FGxBiSHWESfWsUZPQ6rB4G47O1XpFo";
+export const API_URL_TEXT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${SERVICE_TOKEN}`;
+export const API_URL_TTS = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${SERVICE_TOKEN}`;
