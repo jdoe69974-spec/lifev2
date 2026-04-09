@@ -28,7 +28,6 @@ export default function Index() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   
-  // STATE LOCK: Tracks if an API call is running to block duplicate triggers
   const [isProcessing, setIsProcessing] = useState(false);
 
   const recognitionRef = useRef<any>(null);
@@ -68,10 +67,9 @@ export default function Index() {
   };
 
   const handleProcess = useCallback(async (text: string) => {
-    // GUARD: Stop immediately if text is empty or an API call is already running
     if (!text.trim() || isProcessing) return;
 
-    setIsProcessing(true); // ENGAGE LOCK
+    setIsProcessing(true); 
     setStatus(t(lang, 'aiProcessing'));
     
     try {
@@ -101,7 +99,6 @@ export default function Index() {
 
       setSessionHistory(prev => [entry, ...prev].slice(0, 10));
 
-      // BREATHER: Give the Free Tier API 2 seconds to cool down between text and audio calls
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       setStatus(t(lang, 'ttsGenerating'));
@@ -114,7 +111,6 @@ export default function Index() {
       console.error("Processing error:", e);
       setStatus(`${t(lang, 'aiFailed')}: ${e.message}`);
     } finally {
-      // RELEASE LOCK: Wait an extra 2 seconds before unlocking to prevent rapid spam clicks
       setTimeout(() => setIsProcessing(false), 2000);
     }
   }, [lang, county, getFullContext, isProcessing]);
