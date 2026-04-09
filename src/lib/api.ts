@@ -50,41 +50,27 @@ const dosageSchema = {
 };
 
 async function fetchWithRetry(url: string, options: RequestInit, fastRetry = false): Promise<Response> {
-  const maxRetries = 5;
+  const maxRetries = 3; // Reduced from 5 to avoid hammering the server
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch(url, options);
       if (response.ok) return response;
       
-      const errorBody = await response.text();
-      let errorMessage = `Service request failed (${response.status}).`;
-      try {
-        const errorJson = JSON.parse(errorBody);
-        errorMessage = errorJson.error?.message || errorMessage;
-      } catch { /* ignore */ }
-
       if (response.status === 429) {
-        const delay = fastRetry ? 2000 * (2 ** i) : 8000 * (2 ** i);
-        if (i < maxRetries - 1) {
-          console.warn(`Rate limited, retrying in ${delay / 1000}s... (attempt ${i + 1}/${maxRetries})`);
-          await new Promise(r => setTimeout(r, delay));
-          continue;
-        }
-        throw new Error(`Service is busy. Please wait a moment and try again.`);
+        // Longer wait times for free tier: 10s, 20s, 40s
+        const delay = 10000 * (2 ** i); 
+        console.warn(`Rate limited. Waiting ${delay / 1000}s before trying again...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
       }
-      if (response.status >= 400 && response.status < 500) {
-        throw new Error(errorMessage);
-      }
-      if (i === maxRetries - 1) throw new Error(errorMessage);
-      const delay = fastRetry ? 2000 * (2 ** i) : 5000 * (2 ** i);
-      await new Promise(r => setTimeout(r, delay));
+
+      throw new Error(`API Error: ${response.status}`);
     } catch (error) {
       if (i === maxRetries - 1) throw error;
-      const delay = fastRetry ? 2000 * (2 ** i) : 5000 * (2 ** i);
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise(r => setTimeout(r, 5000));
     }
   }
-  throw new Error("Max retries exceeded");
+  throw new Error("Maximum attempts reached. Please wait 1 minute and try again.");
 }
 
 // FIXED: Consolidated into a single AI request
