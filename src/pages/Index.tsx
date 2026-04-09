@@ -30,11 +30,13 @@ export default function Index() {
 
   const recognitionRef = useRef<any>(null);
 
+  // Initialize status
   useEffect(() => {
     setStatus(t(lang, 'statusDefault'));
     setTranscript(t(lang, 'waitingTranscript'));
   }, [lang]);
 
+  // Dark mode toggle
   useEffect(() => {
     if (dark) {
       document.documentElement.classList.add('dark');
@@ -43,42 +45,16 @@ export default function Index() {
     }
   }, [dark]);
 
+  // Helper to get chronological context
   const getFullContext = useCallback((current: string) => {
     let ctx = '';
+    // Reverse creates a chronological flow (oldest to newest)
     [...sessionHistory].reverse().forEach((entry, i) => {
-      ctx += `[REPORT ${i + 1} - TIME AGO]: ${entry.transcript}\n---\n`;
+      ctx += `[REPORT ${i + 1}]: ${entry.transcript}\n---\n`;
     });
-    ctx += `[CURRENT REPORT - JUST NOW]: ${current}\n---\n`;
+    ctx += `[CURRENT UPDATE]: ${current}\n---\n`;
     return ctx.trim();
   }, [sessionHistory]);
-
-  const handleProcess = useCallback(async (text: string) => {
-    setStatus(t(lang, 'aiProcessing'));
-    try {
-      const fullContext = getFullContext(text);
-      const { pcr: newPcr, recommendation: rec } = await processTranscript(fullContext, county || 'Unspecified Arkansas County');
-      setPcr(newPcr);
-      setRecommendation(rec);
-
-      const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const entry: SessionEntry = {
-        time: timestamp,
-        transcript: text,
-        chiefComplaint: newPcr.chiefComplaint,
-        recommendation: rec,
-        interventions: (newPcr.interventions || []).join(', '),
-      };
-      setSessionHistory(prev => [entry, ...prev].slice(0, 10));
-
-      setStatus(t(lang, 'ttsGenerating'));
-      const url = await generateTTS(rec);
-      setAudioUrl(url);
-      setStatus(t(lang, 'ttsReady'));
-      playAudioFromUrl(url);
-    } catch (e: any) {
-      setStatus(`${t(lang, 'aiFailed')}: ${e.message}`);
-    }
-  }, [lang, county, getFullContext]);
 
   const playAudioFromUrl = (url: string) => {
     const audio = new Audio(url);
@@ -92,6 +68,51 @@ export default function Index() {
     if (audioUrl) playAudioFromUrl(audioUrl);
   };
 
+  const handleProcess = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+
+    setStatus(t(lang, 'aiProcessing'));
+    try {
+      const fullContext = getFullContext(text);
+      
+      // API call now returns both pcr and recommendation in one go
+      const { pcr: newPcr, recommendation: rec } = await processTranscript(
+        fullContext, 
+        county || 'Unspecified Arkansas County'
+      );
+      
+      setPcr(newPcr);
+      setRecommendation(rec);
+
+      const timestamp = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      });
+
+      const entry: SessionEntry = {
+        time: timestamp,
+        transcript: text,
+        chiefComplaint: newPcr.chiefComplaint,
+        recommendation: rec,
+        interventions: (newPcr.interventions || []).join(', '),
+      };
+
+      setSessionHistory(prev => [entry, ...prev].slice(0, 10));
+
+      // Generate Voice
+      setStatus(t(lang, 'ttsGenerating'));
+      const url = await generateTTS(rec);
+      setAudioUrl(url);
+      setStatus(t(lang, 'ttsReady'));
+      playAudioFromUrl(url);
+
+    } catch (e: any) {
+      console.error("Processing error:", e);
+      setStatus(`${t(lang, 'aiFailed')}: ${e.message}`);
+    }
+  }, [lang, county, getFullContext]);
+
   const toggleRecording = useCallback(() => {
     if (!('webkitSpeechRecognition' in window)) {
       setStatus(t(lang, 'speechNotSupported'));
@@ -100,7 +121,6 @@ export default function Index() {
 
     if (isRecording && recognitionRef.current) {
       recognitionRef.current.stop();
-      setIsRecording(false);
       return;
     }
 
@@ -121,6 +141,7 @@ export default function Index() {
       const text = event.results[0][0].transcript;
       setTranscript(text);
       setStatus(t(lang, 'transcribed'));
+      // This sends the text to the AI once
       handleProcess(text);
     };
 
@@ -129,18 +150,20 @@ export default function Index() {
       if (event.error === 'no-speech') {
         setStatus(t(lang, 'noSpeech'));
       } else {
-        setStatus(`${t(lang, 'recognitionError')}: ${event.error}. ${t(lang, 'tryAgain')}`);
+        setStatus(`${t(lang, 'recognitionError')}: ${event.error}`);
       }
     };
 
-    recognition.onend = () => setIsRecording(false);
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
 
     recognitionRef.current = recognition;
     recognition.start();
   }, [isRecording, lang, handleProcess]);
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 md:p-8">
+    <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 md:p-8">
       <div className="max-w-5xl mx-auto">
         <AppHeader
           lang={lang}
