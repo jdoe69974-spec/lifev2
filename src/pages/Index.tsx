@@ -97,7 +97,7 @@ export default function Index() {
         interventions: (newPcr.interventions || []).join(', '),
       };
 
-      setSessionHistory(prev => [entry, ...prev].slice(0, 10));
+      setSessionHistory(prev => [entry, ...prev].slice(0, 2));
 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
