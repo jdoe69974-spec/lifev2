@@ -18,6 +18,6 @@ export const DRUG_OPTIONS = [
 ];
 
 // Clinical AI service credentials
-export const SERVICE_TOKEN = "AIzaSyDp8FGxBiSHWESfWsUZPQ6rB4G47O1XpFo";
+export const SERVICE_TOKEN = "AIzaSyCF_-wOHPF3iq7prWSL3rOPKioRgPiohL8";
 export const API_URL_TEXT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${SERVICE_TOKEN}`;
 export const API_URL_TTS = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${SERVICE_TOKEN}`;
