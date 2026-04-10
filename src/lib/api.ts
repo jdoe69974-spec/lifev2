@@ -33,18 +33,18 @@ export async function processTranscript(
   Vitals should reflect the most recent set. You MUST also provide a concise clinical recommendation (under 15 words) 
   inside the JSON that aligns with Arkansas protocols.
 
-  Respond EXACTLY with this JSON format and nothing else:
+  Respond EXACTLY with this JSON format and nothing else. REPLACE the bracketed text with the actual extracted patient data. Do NOT output the word "string":
   {
-    "chiefComplaint": "string",
-    "mechanismOfInjury": "string",
-    "initialVitals": "string",
-    "interventions": ["string", "string"],
-    "triageRecommendation": "string",
-    "clinicalRecommendation": "string"
+    "chiefComplaint": "<extract the main patient complaint here>",
+    "mechanismOfInjury": "<describe how they were injured, or write 'None'>",
+    "initialVitals": "<list any heart rate, blood pressure, etc. mentioned>",
+    "interventions": ["<treatment 1>", "<treatment 2>"],
+    "triageRecommendation": "<determine priority level>",
+    "clinicalRecommendation": "<your short 15-word clinical advice>"
   }`;
 
   const payload = {
-    model: "meditron",
+    model: "phi3", // Swapped to phi3 for much faster responses
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: `Encounter context: ${fullContext}` }
@@ -88,18 +88,18 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
   const systemPrompt = `You are a certified Paramedic AI assistant. 
   Calculate the pediatric dose for the requested drug based on standard PALS/APLS weight-based protocols.
   
-  Respond EXACTLY with this JSON format and nothing else:
+  Respond EXACTLY with this JSON format and nothing else. REPLACE the bracketed text with the actual calculated data. Do NOT output the word "string":
   {
-    "drug": "string",
-    "weightKg": number,
-    "calculatedDose": "string",
-    "justification": "string"
+    "drug": "<name of drug>",
+    "weightKg": <number representing weight>,
+    "calculatedDose": "<calculated dose with units>",
+    "justification": "<brief explanation of the math>"
   }`;
 
   const query = `Calculate the dose for ${drug} for a patient who weighs ${weightKg} kg (${weightLbs} lbs).`;
 
   const payload = {
-    model: "meditron",
+    model: "phi3", // Swapped to phi3 for much faster responses
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: query }
