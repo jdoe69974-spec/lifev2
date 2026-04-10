@@ -1,158 +1,202 @@
-export interface PCRData {
-  chiefComplaint?: string;
-  mechanismOfInjury?: string;
-  initialVitals?: string;
-  interventions?: string[];
-  triageRecommendation?: string;
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { Language, t } from '@/lib/translations';
+// FIXED: We now import speakText instead of generateTTS
+import { processTranscript, speakText, PCRData, SessionEntry } from '@/lib/api';
+import { AppHeader } from '@/components/AppHeader';
+import { VoiceInput } from '@/components/VoiceInput';
+import { AIGuidance } from '@/components/AIGuidance';
+import { DoseCalculator } from '@/components/DoseCalculator';
+import { PCRTemplate } from '@/components/PCRTemplate';
+import { SessionLog } from '@/components/SessionLog';
+import { CountySelect } from '@/components/CountySelect';
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+  }
 }
 
-export interface DosageData {
-  drug: string;
-  weightKg: number;
-  calculatedDose: string;
-  justification: string;
-}
+export default function Index() {
+  const [lang, setLang] = useState<Language>('en');
+  const [dark, setDark] = useState(true);
+  const [county, setCounty] = useState('Washington');
+  const [isRecording, setIsRecording] = useState(false);
+  const [status, setStatus] = useState('');
+  const [transcript, setTranscript] = useState('');
+  const [recommendation, setRecommendation] = useState('');
+  const [pcr, setPcr] = useState<PCRData>({});
+  const [sessionHistory, setSessionHistory] = useState<SessionEntry[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-export interface SessionEntry {
-  time: string;
-  transcript: string;
-  chiefComplaint?: string;
-  recommendation: string;
-  interventions: string;
-}
+  const recognitionRef = useRef<any>(null);
 
-// Local Ollama API endpoint running on the kiosk machine
-const LOCAL_API_URL = "http://localhost:11434/api/chat";
+  useEffect(() => {
+    setStatus(t(lang, 'statusDefault'));
+    setTranscript(t(lang, 'waitingTranscript'));
+  }, [lang]);
 
-export async function processTranscript(
-  fullContext: string,
-  county: string
-): Promise<{ pcr: PCRData; recommendation: string }> {
-  
-  // We embed the schema directly into the system prompt for local LLMs
-  const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
-  Synthesize the complete chronological narration provided into a single, comprehensive JSON structure. 
-  Vitals should reflect the most recent set. You MUST also provide a concise clinical recommendation (under 15 words) 
-  inside the JSON that aligns with Arkansas protocols.
+  useEffect(() => {
+    if (dark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [dark]);
 
-  Respond EXACTLY with this JSON format and nothing else:
-  {
-    "chiefComplaint": "string",
-    "mechanismOfInjury": "string",
-    "initialVitals": "string",
-    "interventions": ["string", "string"],
-    "triageRecommendation": "string",
-    "clinicalRecommendation": "string"
-  }`;
+  const getFullContext = useCallback((current: string) => {
+    let ctx = '';
+    [...sessionHistory].reverse().forEach((entry, i) => {
+      ctx += `[REPORT ${i + 1}]: ${entry.transcript}\n---\n`;
+    });
+    ctx += `[CURRENT UPDATE]: ${current}\n---\n`;
+    return ctx.trim();
+  }, [sessionHistory]);
 
-  const payload = {
-    model: "meditron", // Ensure you ran `ollama run meditron` on the machine
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: `Encounter context: ${fullContext}` }
-    ],
-    stream: false,
-    format: "json", // Forces Ollama to lock its output to JSON
-    options: {
-      temperature: 0.1 // Low temperature for clinical accuracy
+  const handlePlay = async () => {
+    if (recommendation) {
+      setIsPlaying(true);
+      await speakText(recommendation, lang === 'es' ? 'es-US' : 'en-US');
+      setIsPlaying(false);
     }
   };
 
-  try {
-    const response = await fetch(LOCAL_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+  const handleProcess = useCallback(async (text: string) => {
+    if (!text.trim() || isProcessing) return;
 
-    if (!response.ok) throw new Error("Local AI server not responding.");
-
-    const result = await response.json();
-    const jsonText = result.message.content;
+    setIsProcessing(true); 
+    setStatus(t(lang, 'aiProcessing'));
     
-    const rawData = JSON.parse(jsonText);
+    try {
+      const fullContext = getFullContext(text);
+      
+      const { pcr: newPcr, recommendation: rec } = await processTranscript(
+        fullContext, 
+        county || 'Unspecified Arkansas County'
+      );
+      
+      setPcr(newPcr);
+      setRecommendation(rec);
 
-    const pcr: PCRData = {
-      chiefComplaint: rawData.chiefComplaint,
-      mechanismOfInjury: rawData.mechanismOfInjury,
-      initialVitals: rawData.initialVitals,
-      interventions: rawData.interventions,
-      triageRecommendation: rawData.triageRecommendation,
-    };
+      const timestamp = new Date().toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit' 
+      });
 
-    const recommendation = rawData.clinicalRecommendation || "Report analyzed. No critical recommendations.";
+      const entry: SessionEntry = {
+        time: timestamp,
+        transcript: text,
+        chiefComplaint: newPcr.chiefComplaint,
+        recommendation: rec,
+        interventions: (newPcr.interventions || []).join(', '),
+      };
 
-    return { pcr, recommendation };
-  } catch (error) {
-    console.error("Local Model Error:", error);
-    throw new Error("Failed to process with local AI. Is Ollama running with OLLAMA_ORIGINS=\"*\"?");
-  }
-}
+      setSessionHistory(prev => [entry, ...prev].slice(0, 2));
 
-export async function calculateDose(drug: string, weightKg: number, weightLbs: number): Promise<DosageData> {
-  const systemPrompt = `You are a certified Paramedic AI assistant. 
-  Calculate the pediatric dose for the requested drug based on standard PALS/APLS weight-based protocols.
-  
-  Respond EXACTLY with this JSON format and nothing else:
-  {
-    "drug": "string",
-    "weightKg": number,
-    "calculatedDose": "string",
-    "justification": "string"
-  }`;
+      // FIXED: Using local browser TTS instead of Google API
+      setStatus(t(lang, 'ttsReady'));
+      setIsPlaying(true);
+      await speakText(rec, lang === 'es' ? 'es-US' : 'en-US');
+      setIsPlaying(false);
 
-  const query = `Calculate the dose for ${drug} for a patient who weighs ${weightKg} kg (${weightLbs} lbs).`;
-
-  const payload = {
-    model: "meditron",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: query }
-    ],
-    stream: false,
-    format: "json",
-    options: {
-      temperature: 0.1
+    } catch (e: any) {
+      console.error("Processing error:", e);
+      setStatus(`${t(lang, 'aiFailed')}: ${e.message}`);
+    } finally {
+      setTimeout(() => setIsProcessing(false), 2000);
     }
-  };
+  }, [lang, county, getFullContext, isProcessing]);
 
-  try {
-    const response = await fetch(LOCAL_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) throw new Error("Local AI server not responding.");
-
-    const result = await response.json();
-    const jsonText = result.message.content;
-    return JSON.parse(jsonText);
-  } catch (error) {
-    console.error("Local Model Error:", error);
-    throw new Error("Failed to calculate dose with local AI. Ensure Ollama is running.");
-  }
-}
-
-// Completely offline, native browser Text-to-Speech
-export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
-  return new Promise<void>((resolve) => {
-    if (!('speechSynthesis' in window)) {
-      console.warn("Text-to-Speech not supported in this browser.");
-      resolve();
+  const toggleRecording = useCallback(() => {
+    if (!('webkitSpeechRecognition' in window)) {
+      setStatus(t(lang, 'speechNotSupported'));
       return;
     }
 
-    // Stop any currently playing audio so it doesn't overlap
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      return;
+    }
+
     window.speechSynthesis.cancel();
+    setIsPlaying(false);
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
-    utterance.rate = 1.0; 
-    
-    utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
+    const recognition = new window.webkitSpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = lang === 'es' ? 'es-US' : 'en-US';
 
-    window.speechSynthesis.speak(utterance);
-  });
+    recognition.onstart = () => {
+      setIsRecording(true);
+      setStatus(t(lang, 'listening'));
+      setTranscript(t(lang, 'listeningText'));
+      setRecommendation('');
+    };
+
+    recognition.onresult = (event: any) => {
+      const text = event.results[0][0].transcript;
+      setTranscript(text);
+      setStatus(t(lang, 'transcribed'));
+      handleProcess(text);
+    };
+
+    recognition.onerror = (event: any) => {
+      setIsRecording(false);
+      if (event.error === 'no-speech') {
+        setStatus(t(lang, 'noSpeech'));
+      } else {
+        setStatus(`${t(lang, 'recognitionError')}: ${event.error}`);
+      }
+    };
+
+    recognition.onend = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  }, [isRecording, lang, handleProcess]);
+
+  return (
+    <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 md:p-8">
+      <div className="max-w-5xl mx-auto">
+        <AppHeader
+          lang={lang}
+          dark={dark}
+          onToggleLang={() => setLang(l => l === 'en' ? 'es' : 'en')}
+          onToggleDark={() => setDark(d => !d)}
+        />
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="space-y-6">
+            <div className="p-5 bg-card rounded-xl shadow-lg border border-border">
+              <CountySelect lang={lang} value={county} onChange={setCounty} />
+              <VoiceInput
+                lang={lang}
+                isRecording={isRecording}
+                status={status}
+                transcript={transcript}
+                onToggle={toggleRecording}
+              />
+            </div>
+            <AIGuidance
+              lang={lang}
+              recommendation={recommendation}
+              isPlaying={isPlaying}
+              canPlay={!!recommendation}
+              onPlay={handlePlay}
+            />
+          </div>
+
+          <div className="space-y-6">
+            <DoseCalculator lang={lang} />
+            <PCRTemplate lang={lang} data={pcr} />
+          </div>
+        </div>
+
+        <SessionLog lang={lang} entries={sessionHistory} />
+      </div>
+    </div>
+  );
 }
