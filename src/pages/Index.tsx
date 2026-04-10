@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Language, t } from '@/lib/translations';
-import { processTranscript, generateTTS, PCRData, SessionEntry } from '@/lib/api';
+// Notice we import speakText now instead of generateTTS
+import { processTranscript, speakText, PCRData, SessionEntry } from '@/lib/api';
 import { AppHeader } from '@/components/AppHeader';
 import { VoiceInput } from '@/components/VoiceInput';
 import { AIGuidance } from '@/components/AIGuidance';
@@ -25,9 +26,9 @@ export default function Index() {
   const [recommendation, setRecommendation] = useState('');
   const [pcr, setPcr] = useState<PCRData>({});
   const [sessionHistory, setSessionHistory] = useState<SessionEntry[]>([]);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
   
+  // We removed the audioUrl state, as the browser speaks directly now!
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   const recognitionRef = useRef<any>(null);
@@ -54,16 +55,13 @@ export default function Index() {
     return ctx.trim();
   }, [sessionHistory]);
 
-  const playAudioFromUrl = (url: string) => {
-    const audio = new Audio(url);
-    setIsPlaying(true);
-    audio.play();
-    audio.onended = () => setIsPlaying(false);
-    audio.onerror = () => setIsPlaying(false);
-  };
-
-  const handlePlay = () => {
-    if (audioUrl) playAudioFromUrl(audioUrl);
+  // Updated to use the local browser TTS
+  const handlePlay = async () => {
+    if (recommendation) {
+      setIsPlaying(true);
+      await speakText(recommendation, lang === 'es' ? 'es-US' : 'en-US');
+      setIsPlaying(false);
+    }
   };
 
   const handleProcess = useCallback(async (text: string) => {
@@ -99,13 +97,11 @@ export default function Index() {
 
       setSessionHistory(prev => [entry, ...prev].slice(0, 2));
 
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      setStatus(t(lang, 'ttsGenerating'));
-      const url = await generateTTS(rec);
-      setAudioUrl(url);
+      // Trigger the local, offline TTS immediately
       setStatus(t(lang, 'ttsReady'));
-      playAudioFromUrl(url);
+      setIsPlaying(true);
+      await speakText(rec, lang === 'es' ? 'es-US' : 'en-US');
+      setIsPlaying(false);
 
     } catch (e: any) {
       console.error("Processing error:", e);
@@ -126,6 +122,10 @@ export default function Index() {
       return;
     }
 
+    // Stop any AI audio from playing when the user starts speaking again
+    window.speechSynthesis.cancel();
+    setIsPlaying(false);
+
     const recognition = new window.webkitSpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
@@ -135,7 +135,6 @@ export default function Index() {
       setIsRecording(true);
       setStatus(t(lang, 'listening'));
       setTranscript(t(lang, 'listeningText'));
-      setAudioUrl(null);
       setRecommendation('');
     };
 
@@ -189,7 +188,7 @@ export default function Index() {
               lang={lang}
               recommendation={recommendation}
               isPlaying={isPlaying}
-              canPlay={!!audioUrl}
+              canPlay={!!recommendation} // Only enable play button if there is text to speak!
               onPlay={handlePlay}
             />
           </div>
