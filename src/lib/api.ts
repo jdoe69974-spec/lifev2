@@ -44,7 +44,7 @@ export async function processTranscript(
   }`;
 
   const payload = {
-    model: "phi3", // Swapped to phi3 for much faster responses
+    model: "meditron", // Reverted back to meditron
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: `Encounter context: ${fullContext}` }
@@ -78,9 +78,10 @@ export async function processTranscript(
     const recommendation = rawData.clinicalRecommendation || "Report analyzed. No critical recommendations.";
 
     return { pcr, recommendation };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Local Model Error:", error);
-    throw new Error("Failed to process with local AI. Is Ollama running with OLLAMA_ORIGINS=\"*\"?");
+    // Uncovered the real error message here just in case!
+    throw new Error(`Real Error: ${error.message}`);
   }
 }
 
@@ -99,7 +100,7 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
   const query = `Calculate the dose for ${drug} for a patient who weighs ${weightKg} kg (${weightLbs} lbs).`;
 
   const payload = {
-    model: "phi3", // Swapped to phi3 for much faster responses
+    model: "meditron", // Reverted back to meditron
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: query }
@@ -121,9 +122,9 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
     const result = await response.json();
     const jsonText = result.message.content;
     return JSON.parse(jsonText);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Local Model Error:", error);
-    throw new Error("Failed to calculate dose with local AI. Ensure Ollama is running.");
+    throw new Error(`Real Error: ${error.message}`);
   }
 }
 
