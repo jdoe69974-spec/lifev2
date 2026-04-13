@@ -23,7 +23,6 @@ export interface SessionEntry {
 
 // ✅ FIX 1: Added /api/chat to the end of the URL
 const LOCAL_API_URL = "https://variably-moonlight-hypnotize.ngrok-free.dev/api/chat";
-
 export async function processTranscript(
   fullContext: string,
   county: string
