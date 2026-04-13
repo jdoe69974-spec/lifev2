@@ -26,12 +26,18 @@ export async function processTranscript(
 ): Promise<{ pcr: PCRData; recommendation: string }> {
   
   const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
-  Synthesize the chronological narration into a JSON structure. 
-  Provide a concise clinical recommendation (under 15 words).
-  
+  Synthesize the chronological narration provided into a JSON structure. 
+
+  STRICT RULES:
+  1. Use ONLY information explicitly stated in the transcript.
+  2. If vitals (BP, HR, RR, O2, Temp) are NOT mentioned, set that field to "Not recorded".
+  3. If the Mechanism of Injury or Chief Complaint is not clear, set it to "Information not provided".
+  4. DO NOT hallucinate or "assume" statistics like 120/80 or 98.6.
+  5. Provide a concise clinical recommendation (under 15 words) based ONLY on the facts provided.
+
   Respond ONLY with a JSON object containing:
   chiefComplaint, mechanismOfInjury, initialVitals, interventions (array), triageRecommendation, clinicalRecommendation.`;
-
+ 
   const payload = {
     model: "llama-3.1-8b-instant",
     messages: [
