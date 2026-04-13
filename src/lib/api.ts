@@ -22,7 +22,7 @@ export interface SessionEntry {
 }
 
 // Ensure this matches exactly what is shown in your Python GUI window
-const LOCAL_API_URL = "https://plastic-snake-79.loca.lt/api/chat";
+const LOCAL_API_URL = "https://ems-ai-proxy.loca.lt/api/chat";
 
 export async function processTranscript(
   fullContext: string,
