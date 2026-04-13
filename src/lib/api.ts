@@ -58,9 +58,10 @@ export async function processTranscript(
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
         headers: { 
-          // 👇 Using text/plain prevents the browser from sending an OPTIONS request,
-          // bypassing the Ngrok free-tier block entirely for all devices.
+          // 👇 Using text/plain bypasses preflight checks entirely
           'Content-Type': 'text/plain', 
+          // If localtunnel ever throws a 403, uncomment the line below:
+          // 'Bypass-Tunnel-Reminder': 'true'
         },
         body: JSON.stringify(payload),
       });
