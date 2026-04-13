@@ -13,12 +13,12 @@ export interface DosageData {
   justification: string;
 }
 
-// Keep your key here
 const GROQ_API_KEY = "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"; 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /**
- * Process transcript using Groq Cloud AI
+ * 1. AI-POWERED TRANSCRIPT PROCESSING
+ * Summarizes clinical data from speech.
  */
 export async function processTranscript(
   fullContext: string,
@@ -26,18 +26,18 @@ export async function processTranscript(
 ): Promise<{ pcr: PCRData; recommendation: string }> {
   
   const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
-  Synthesize the chronological narration provided into a JSON structure. 
+  Synthesize the chronological narration into a JSON structure. 
 
   STRICT RULES:
   1. Use ONLY information explicitly stated in the transcript.
   2. If vitals (BP, HR, RR, O2, Temp) are NOT mentioned, set that field to "Not recorded".
-  3. If the Mechanism of Injury or Chief Complaint is not clear, set it to "Information not provided".
-  4. DO NOT hallucinate or "assume" statistics like 120/80 or 98.6.
-  5. Provide a concise clinical recommendation (under 15 words) based ONLY on the facts provided.
+  3. If MOI or Chief Complaint is not clear, set it to "Information not provided".
+  4. DO NOT hallucinate statistics.
+  5. Provide a concise clinical recommendation (under 15 words) based ONLY on facts.
 
   Respond ONLY with a JSON object containing:
   chiefComplaint, mechanismOfInjury, initialVitals, interventions (array), triageRecommendation, clinicalRecommendation.`;
- 
+
   const payload = {
     model: "llama-3.1-8b-instant",
     messages: [
@@ -63,8 +63,7 @@ export async function processTranscript(
     const result = await response.json();
     const rawData = JSON.parse(result.choices[0].message.content);
 
-    // 🛠️ CRITICAL FIX: Convert initialVitals to string if it is an object
-    // This prevents the React Error #31 (Black Screen)
+    // Prevent React Error #31 by ensuring vitals is a string
     let vitalsDisplay = "";
     if (typeof rawData.initialVitals === 'object' && rawData.initialVitals !== null) {
       vitalsDisplay = Object.entries(rawData.initialVitals)
@@ -74,17 +73,16 @@ export async function processTranscript(
       vitalsDisplay = String(rawData.initialVitals || "Not recorded");
     }
 
-    const pcr: PCRData = {
-      chiefComplaint: String(rawData.chiefComplaint || ""),
-      mechanismOfInjury: String(rawData.mechanismOfInjury || ""),
-      initialVitals: vitalsDisplay, 
-      interventions: Array.isArray(rawData.interventions) ? rawData.interventions : [],
-      triageRecommendation: String(rawData.triageRecommendation || ""),
+    return {
+      pcr: {
+        chiefComplaint: String(rawData.chiefComplaint || ""),
+        mechanismOfInjury: String(rawData.mechanismOfInjury || ""),
+        initialVitals: vitalsDisplay, 
+        interventions: Array.isArray(rawData.interventions) ? rawData.interventions : [],
+        triageRecommendation: String(rawData.triageRecommendation || ""),
+      },
+      recommendation: String(rawData.clinicalRecommendation || "Report analyzed.")
     };
-
-    const recommendation = String(rawData.clinicalRecommendation || "Report analyzed.");
-
-    return { pcr, recommendation };
   } catch (error: any) {
     console.error("Cloud AI Error:", error);
     throw new Error(`Cloud Error: ${error.message}`);
@@ -92,58 +90,58 @@ export async function processTranscript(
 }
 
 /**
- * Calculate Pediatric Dose using Groq Cloud AI
+ * 2. DETERMINISTIC DOSAGE CALCULATION (Non-AI)
+ * High-precision, hard-coded math for clinical safety.
  */
+const PROTOCOLS: Record<string, { dosePerKg: number; unit: string; max?: number }> = {
+  "epinephrine": { dosePerKg: 0.01, unit: "mg", max: 0.5 },
+  "amiodarone": { dosePerKg: 5, unit: "mg", max: 300 },
+  "fentanyl": { dosePerKg: 1, unit: "mcg", max: 100 },
+  "adenosine": { dosePerKg: 0.1, unit: "mg", max: 6 },
+  "narcan": { dosePerKg: 0.1, unit: "mg", max: 2 },
+};
+
 export async function calculateDose(
   drug: string, 
   weightKg: number, 
   weightLbs: number
 ): Promise<DosageData> {
-  
-  const systemPrompt = `You are a certified Paramedic AI assistant. 
-  Calculate the pediatric dose for the requested drug based on standard weight-based protocols.
-  Respond ONLY with a JSON object: { "drug": string, "weightKg": number, "calculatedDose": string, "justification": string }`;
+  // Simulate a tiny delay for UI feel, but use local math
+  await new Promise(r => setTimeout(r, 100));
 
-  const query = `Calculate the dose for ${drug} for a patient who weighs ${weightKg} kg (${weightLbs} lbs).`;
+  const drugKey = drug.toLowerCase();
+  const protocol = PROTOCOLS[drugKey];
 
-  const payload = {
-    model: "llama-3.1-8b-instant",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: query }
-    ],
-    response_format: { type: "json_object" },
-    temperature: 0.1
-  };
-
-  try {
-    const response = await fetch(GROQ_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) throw new Error("Cloud AI is unavailable.");
-
-    const result = await response.json();
-    const rawData = JSON.parse(result.choices[0].message.content);
-    
-    // Ensure all returned fields are strings/numbers, not objects
+  if (!protocol) {
     return {
-      drug: String(rawData.drug || drug),
-      weightKg: Number(rawData.weightKg || weightKg),
-      calculatedDose: String(rawData.calculatedDose || "Error calculating"),
-      justification: String(rawData.justification || "")
+      drug,
+      weightKg,
+      calculatedDose: "Protocol not found",
+      justification: "Please refer to local hand-chart."
     };
-  } catch (error: any) {
-    console.error("Dose Calculation Error:", error);
-    throw new Error(`Dose Error: ${error.message}`);
   }
+
+  let dose = weightKg * protocol.dosePerKg;
+  let isCapped = false;
+
+  if (protocol.max && dose > protocol.max) {
+    dose = protocol.max;
+    isCapped = true;
+  }
+
+  return {
+    drug: drug.charAt(0).toUpperCase() + drug.slice(1),
+    weightKg: parseFloat(weightKg.toFixed(2)),
+    calculatedDose: `${dose.toFixed(2)} ${protocol.unit}`,
+    justification: isCapped 
+      ? `Calculated ${dose.toFixed(2)}${protocol.unit} (Capped at Max)`
+      : `Math: ${protocol.dosePerKg}${protocol.unit}/kg × ${weightKg.toFixed(2)}kg`
+  };
 }
 
+/**
+ * 3. TEXT TO SPEECH
+ */
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
   return new Promise<void>((resolve) => {
     if (!('speechSynthesis' in window)) {
