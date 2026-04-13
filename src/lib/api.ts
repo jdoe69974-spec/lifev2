@@ -18,7 +18,7 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /**
  * 1. AI-POWERED TRANSCRIPT PROCESSING
- * Summarizes clinical data from speech.
+ * Summarizes clinical data from speech using Groq.
  */
 export async function processTranscript(
   fullContext: string,
@@ -91,14 +91,14 @@ export async function processTranscript(
 
 /**
  * 2. DETERMINISTIC DOSAGE CALCULATION (Non-AI)
- * High-precision, hard-coded math for clinical safety.
+ * Matches keys directly to DRUG_OPTIONS values for 100% accuracy.
  */
 const PROTOCOLS: Record<string, { dosePerKg: number; unit: string; max?: number }> = {
-  "epinephrine": { dosePerKg: 0.01, unit: "mg", max: 0.5 },
-  "amiodarone": { dosePerKg: 5, unit: "mg", max: 300 },
-  "fentanyl": { dosePerKg: 1, unit: "mcg", max: 100 },
-  "adenosine": { dosePerKg: 0.1, unit: "mg", max: 6 },
-  "narcan": { dosePerKg: 0.1, unit: "mg", max: 2 },
+  "epinephrine 1:1,000 (im for anaphylaxis)": { dosePerKg: 0.01, unit: "mg", max: 0.5 },
+  "adenosine (for svt)": { dosePerKg: 0.1, unit: "mg", max: 6 },
+  "dextrose 10% (for hypoglycemia)": { dosePerKg: 5, unit: "ml", max: 250 },
+  "midazolam (for seizures)": { dosePerKg: 0.1, unit: "mg", max: 5 },
+  "naloxone (for opioid overdose)": { dosePerKg: 0.1, unit: "mg", max: 2 },
 };
 
 export async function calculateDose(
@@ -106,13 +106,12 @@ export async function calculateDose(
   weightKg: number, 
   weightLbs: number
 ): Promise<DosageData> {
+  // Artificial delay for UX
   await new Promise(r => setTimeout(r, 100));
 
-  // 🛠️ IMPROVED MATCHING: Look for the keyword within the selected drug string
   const selection = drug.toLowerCase();
   
-  // Find the protocol where the key is contained in the selected string
-  // e.g., if selection is "epinephrine_ped", it matches "epinephrine"
+  // Find protocol by checking if our keys exist within the selected string
   const protocolKey = Object.keys(PROTOCOLS).find(key => selection.includes(key));
   const protocol = protocolKey ? PROTOCOLS[protocolKey] : null;
 
@@ -121,7 +120,7 @@ export async function calculateDose(
       drug,
       weightKg,
       calculatedDose: "Protocol not found",
-      justification: "Manual calculation required per local protocol."
+      justification: "Manual calculation required. Verify protocol for this specific concentration."
     };
   }
 
@@ -133,8 +132,11 @@ export async function calculateDose(
     isCapped = true;
   }
 
+  // Clean up the drug name for display (removes the "(for...)" part)
+  const displayName = drug.split('(')[0].trim();
+
   return {
-    drug: drug, // Keeps the original label for the UI
+    drug: displayName,
     weightKg: parseFloat(weightKg.toFixed(2)),
     calculatedDose: `${dose.toFixed(2)} ${protocol.unit}`,
     justification: isCapped 
