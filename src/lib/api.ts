@@ -22,7 +22,7 @@ export interface SessionEntry {
 }
 
 // ⚠️ UPDATE THIS URL based on Step 4 below
-const LOCAL_API_URL = "http://127.0.0.1:5000/api/chat";
+const LOCAL_API_URL = "https://variably-moonlight-hypnotize.ngrok-free.dev";
 
 export async function processTranscript(
   fullContext: string,
