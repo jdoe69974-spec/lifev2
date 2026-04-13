@@ -21,7 +21,7 @@ export interface SessionEntry {
   interventions: string;
 }
 
-const LOCAL_API_URL = "https://others-refer-specialist-approximate.trycloudflare.com";
+const LOCAL_API_URL = "https://ems-ai-proxy.loca.lt";
 
 export async function processTranscript(
   fullContext: string,
