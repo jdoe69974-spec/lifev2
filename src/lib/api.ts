@@ -21,8 +21,8 @@ export interface SessionEntry {
   interventions: string;
 }
 
-// ✅ FIX 1: Added /api/chat to the end of the URL
 const LOCAL_API_URL = "https://variably-moonlight-hypnotize.ngrok-free.dev/api/chat";
+
 export async function processTranscript(
   fullContext: string,
   county: string
@@ -55,12 +55,12 @@ export async function processTranscript(
   };
 
   try {
-    // In BOTH processTranscript and calculateDose
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json', // Switch back to JSON
-          'ngrok-skip-browser-warning': '69420', // Any value works, but this is the magic key
+          // 👇 Using text/plain prevents the browser from sending an OPTIONS request,
+          // bypassing the Ngrok free-tier block entirely for all devices.
+          'Content-Type': 'text/plain', 
         },
         body: JSON.stringify(payload),
       });
@@ -114,12 +114,11 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
   };
 
   try {
-    // In BOTH processTranscript and calculateDose
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/json', // Switch back to JSON
-          'ngrok-skip-browser-warning': '69420', // Any value works, but this is the magic key
+          // 👇 Same fix applied here
+          'Content-Type': 'text/plain', 
         },
         body: JSON.stringify(payload),
       });
