@@ -21,7 +21,8 @@ export interface SessionEntry {
   interventions: string;
 }
 
-const LOCAL_API_URL = "http://localhost:11434/api/chat";
+// ⚠️ UPDATE THIS URL based on Step 4 below
+const LOCAL_API_URL = "http://127.0.0.1:5000/api/chat";
 
 export async function processTranscript(
   fullContext: string,
@@ -44,7 +45,7 @@ export async function processTranscript(
   }`;
 
   const payload = {
-    model: "meditron", // Reverted back to meditron
+    model: "meditron",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: `Encounter context: ${fullContext}` }
@@ -61,7 +62,7 @@ export async function processTranscript(
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) throw new Error("Local AI server not responding.");
+    if (!response.ok) throw new Error("Python proxy server not responding.");
 
     const result = await response.json();
     const jsonText = result.message.content;
@@ -79,8 +80,7 @@ export async function processTranscript(
 
     return { pcr, recommendation };
   } catch (error: any) {
-    console.error("Local Model Error:", error);
-    // Uncovered the real error message here just in case!
+    console.error("Model/Proxy Error:", error);
     throw new Error(`Real Error: ${error.message}`);
   }
 }
@@ -100,7 +100,7 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
   const query = `Calculate the dose for ${drug} for a patient who weighs ${weightKg} kg (${weightLbs} lbs).`;
 
   const payload = {
-    model: "meditron", // Reverted back to meditron
+    model: "meditron",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: query }
@@ -117,13 +117,13 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
       body: JSON.stringify(payload),
     });
 
-    if (!response.ok) throw new Error("Local AI server not responding.");
+    if (!response.ok) throw new Error("Python proxy server not responding.");
 
     const result = await response.json();
     const jsonText = result.message.content;
     return JSON.parse(jsonText);
   } catch (error: any) {
-    console.error("Local Model Error:", error);
+    console.error("Model/Proxy Error:", error);
     throw new Error(`Real Error: ${error.message}`);
   }
 }
