@@ -21,7 +21,7 @@ export interface SessionEntry {
   interventions: string;
 }
 
-const LOCAL_API_URL = "https://variably-moonlight-hypnotize.ngrok-free.dev/api/chat";
+const LOCAL_API_URL = "https://others-refer-specialist-approximate.trycloudflare.com";
 
 export async function processTranscript(
   fullContext: string,
