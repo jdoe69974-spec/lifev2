@@ -59,7 +59,8 @@ export async function processTranscript(
       method: 'POST',
       // ✅ FIX 2: Added the ngrok bypass header
       headers: { 
-        'Content-Type': 'application/json',
+        // 👇 CHANGED FROM application/json TO text/plain
+        'Content-Type': 'text/plain',
         'ngrok-skip-browser-warning': 'true'
       },
       body: JSON.stringify(payload),
