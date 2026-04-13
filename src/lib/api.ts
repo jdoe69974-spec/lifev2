@@ -21,8 +21,8 @@ export interface SessionEntry {
   interventions: string;
 }
 
-// ⚠️ UPDATE THIS URL based on Step 4 below
-const LOCAL_API_URL = "https://variably-moonlight-hypnotize.ngrok-free.dev";
+// ✅ FIX 1: Added /api/chat to the end of the URL
+const LOCAL_API_URL = "https://variably-moonlight-hypnotize.ngrok-free.dev/api/chat";
 
 export async function processTranscript(
   fullContext: string,
@@ -58,7 +58,11 @@ export async function processTranscript(
   try {
     const response = await fetch(LOCAL_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // ✅ FIX 2: Added the ngrok bypass header
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
       body: JSON.stringify(payload),
     });
 
@@ -113,7 +117,11 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
   try {
     const response = await fetch(LOCAL_API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // ✅ FIX 2: Added the ngrok bypass header here too
+      headers: { 
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+      },
       body: JSON.stringify(payload),
     });
 
