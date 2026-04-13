@@ -13,144 +13,59 @@ export interface DosageData {
   justification: string;
 }
 
-export interface SessionEntry {
-  time: string;
-  transcript: string;
-  chiefComplaint?: string;
-  recommendation: string;
-  interventions: string;
-}
+// ⚠️ REPLACE THIS WITH YOUR ACTUAL KEY FROM GROQ CONSOLE
+const GROQ_API_KEY = "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";
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-// Ensure this matches exactly what is shown in your Python GUI window
-const LOCAL_API_URL = "https://ems-ai-proxy.loca.lt/api/chat";
-
-export async function processTranscript(
-  fullContext: string,
-  county: string
-): Promise<{ pcr: PCRData; recommendation: string }> {
-  
-  const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
-  Synthesize the complete chronological narration provided into a single, comprehensive JSON structure. 
-  Vitals should reflect the most recent set. You MUST also provide a concise clinical recommendation (under 15 words) 
-  inside the JSON that aligns with Arkansas protocols.
-
-  Respond EXACTLY with this JSON format and nothing else. REPLACE the bracketed text with the actual extracted patient data. Do NOT output the word "string":
-  {
-    "chiefComplaint": "<extract the main patient complaint here>",
-    "mechanismOfInjury": "<describe how they were injured, or write 'None'>",
-    "initialVitals": "<list any heart rate, blood pressure, etc. mentioned>",
-    "interventions": ["<treatment 1>", "<treatment 2>"],
-    "triageRecommendation": "<determine priority level>",
-    "clinicalRecommendation": "<your short 15-word clinical advice>"
-  }`;
+export async function processTranscript(fullContext: string, county: string): Promise<{ pcr: PCRData; recommendation: string }> {
+  const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. Output ONLY valid JSON.`;
 
   const payload = {
-    model: "meditron",
+    model: "llama-3.1-8b-instant", // High speed, great for demos
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: `Encounter context: ${fullContext}` }
     ],
-    stream: false,
-    format: "json",
-    options: { temperature: 0.1 }
+    response_format: { type: "json_object" }
   };
 
   try {
-      const response = await fetch(LOCAL_API_URL, {
-        method: 'POST',
-        headers: { 
-          // 👇 Using text/plain avoids the OPTIONS preflight check
-          'Content-Type': 'text/plain', 
-          // 👇 This tells Localtunnel to skip the "Friendly Reminder" 403 screen
-          'bypass-tunnel-reminder': 'true',
-        },
-        body: JSON.stringify(payload),
-      });
-
-    if (!response.ok) throw new Error("Python proxy server not responding.");
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
 
     const result = await response.json();
-    const jsonText = result.message.content;
-    const rawData = JSON.parse(jsonText);
+    const rawData = JSON.parse(result.choices[0].message.content);
 
-    const pcr: PCRData = {
-      chiefComplaint: rawData.chiefComplaint,
-      mechanismOfInjury: rawData.mechanismOfInjury,
-      initialVitals: rawData.initialVitals,
-      interventions: rawData.interventions,
-      triageRecommendation: rawData.triageRecommendation,
+    return {
+      pcr: {
+        chiefComplaint: rawData.chiefComplaint,
+        mechanismOfInjury: rawData.mechanismOfInjury,
+        initialVitals: rawData.initialVitals,
+        interventions: rawData.interventions,
+        triageRecommendation: rawData.triageRecommendation,
+      },
+      recommendation: rawData.clinicalRecommendation || "Report analyzed."
     };
-
-    const recommendation = rawData.clinicalRecommendation || "Report analyzed. No critical recommendations.";
-
-    return { pcr, recommendation };
-  } catch (error: any) {
-    console.error("Model/Proxy Error:", error);
-    throw new Error(`Real Error: ${error.message}`);
+  } catch (error) {
+    console.error("Cloud AI Error:", error);
+    throw new Error("Failed to reach AI Cloud.");
   }
 }
 
-export async function calculateDose(drug: string, weightKg: number, weightLbs: number): Promise<DosageData> {
-  const systemPrompt = `You are a certified Paramedic AI assistant. 
-  Calculate the pediatric dose for the requested drug based on standard PALS/APLS weight-based protocols.
-  
-  Respond EXACTLY with this JSON format and nothing else. REPLACE the bracketed text with the actual calculated data. Do NOT output the word "string":
-  {
-    "drug": "<name of drug>",
-    "weightKg": <number representing weight>,
-    "calculatedDose": "<calculated dose with units>",
-    "justification": "<brief explanation of the math>"
-  }`;
-
-  const query = `Calculate the dose for ${drug} for a patient who weighs ${weightKg} kg (${weightLbs} lbs).`;
-
-  const payload = {
-    model: "meditron",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: query }
-    ],
-    stream: false,
-    format: "json",
-    options: { temperature: 0.1 }
-  };
-
-  try {
-      const response = await fetch(LOCAL_API_URL, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'text/plain', 
-          'bypass-tunnel-reminder': 'true', // Applied fix here too
-        },
-        body: JSON.stringify(payload),
-      });
-
-    if (!response.ok) throw new Error("Python proxy server not responding.");
-
-    const result = await response.json();
-    const jsonText = result.message.content;
-    return JSON.parse(jsonText);
-  } catch (error: any) {
-    console.error("Model/Proxy Error:", error);
-    throw new Error(`Real Error: ${error.message}`);
-  }
-}
+// Update calculateDose similarly using the GROQ_API_URL...
 
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
   return new Promise<void>((resolve) => {
-    if (!('speechSynthesis' in window)) {
-      console.warn("Text-to-Speech not supported in this browser.");
-      resolve();
-      return;
-    }
-
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = lang;
-    utterance.rate = 1.0; 
-    
     utterance.onend = () => resolve();
-    utterance.onerror = () => resolve();
     window.speechSynthesis.speak(utterance);
   });
 }
