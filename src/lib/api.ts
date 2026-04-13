@@ -55,15 +55,15 @@ export async function processTranscript(
   };
 
   try {
-    const response = await fetch(LOCAL_API_URL, {
-      method: 'POST',
-      headers: { 
-        // 👇 CHANGED from application/json TO text/plain
-        'Content-Type': 'text/plain'
-        // ❌ REMOVED: 'ngrok-skip-browser-warning': 'true'
-      },
-      body: JSON.stringify(payload),
-    });
+    // In BOTH processTranscript and calculateDose
+      const response = await fetch(LOCAL_API_URL, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', // Switch back to JSON
+          'ngrok-skip-browser-warning': '69420', // Any value works, but this is the magic key
+        },
+        body: JSON.stringify(payload),
+      });
 
     if (!response.ok) throw new Error("Python proxy server not responding.");
 
@@ -114,15 +114,15 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
   };
 
   try {
-    const response = await fetch(LOCAL_API_URL, {
-      method: 'POST',
-      // ✅ FIX 2: Added the ngrok bypass header here too
-      headers: { 
-        'Content-Type': 'application/json',
-        'ngrok-skip-browser-warning': 'true'
-      },
-      body: JSON.stringify(payload),
-    });
+    // In BOTH processTranscript and calculateDose
+      const response = await fetch(LOCAL_API_URL, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', // Switch back to JSON
+          'ngrok-skip-browser-warning': '69420', // Any value works, but this is the magic key
+        },
+        body: JSON.stringify(payload),
+      });
 
     if (!response.ok) throw new Error("Python proxy server not responding.");
 
