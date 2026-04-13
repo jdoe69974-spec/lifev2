@@ -21,7 +21,7 @@ export interface SessionEntry {
   interventions: string;
 }
 
-const LOCAL_API_URL = "https://ems-ai-proxy.loca.lt";
+const LOCAL_API_URL = "https://plastic-snake-79.loca.lt/api/chat";
 
 export async function processTranscript(
   fullContext: string,
