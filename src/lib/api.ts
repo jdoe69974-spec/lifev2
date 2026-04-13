@@ -106,18 +106,22 @@ export async function calculateDose(
   weightKg: number, 
   weightLbs: number
 ): Promise<DosageData> {
-  // Simulate a tiny delay for UI feel, but use local math
   await new Promise(r => setTimeout(r, 100));
 
-  const drugKey = drug.toLowerCase();
-  const protocol = PROTOCOLS[drugKey];
+  // 🛠️ IMPROVED MATCHING: Look for the keyword within the selected drug string
+  const selection = drug.toLowerCase();
+  
+  // Find the protocol where the key is contained in the selected string
+  // e.g., if selection is "epinephrine_ped", it matches "epinephrine"
+  const protocolKey = Object.keys(PROTOCOLS).find(key => selection.includes(key));
+  const protocol = protocolKey ? PROTOCOLS[protocolKey] : null;
 
   if (!protocol) {
     return {
       drug,
       weightKg,
       calculatedDose: "Protocol not found",
-      justification: "Please refer to local hand-chart."
+      justification: "Manual calculation required per local protocol."
     };
   }
 
@@ -130,7 +134,7 @@ export async function calculateDose(
   }
 
   return {
-    drug: drug.charAt(0).toUpperCase() + drug.slice(1),
+    drug: drug, // Keeps the original label for the UI
     weightKg: parseFloat(weightKg.toFixed(2)),
     calculatedDose: `${dose.toFixed(2)} ${protocol.unit}`,
     justification: isCapped 
