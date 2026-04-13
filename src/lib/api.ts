@@ -21,6 +21,7 @@ export interface SessionEntry {
   interventions: string;
 }
 
+// Ensure this matches exactly what is shown in your Python GUI window
 const LOCAL_API_URL = "https://plastic-snake-79.loca.lt/api/chat";
 
 export async function processTranscript(
@@ -58,10 +59,10 @@ export async function processTranscript(
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
         headers: { 
-          // 👇 Using text/plain bypasses preflight checks entirely
+          // 👇 Using text/plain avoids the OPTIONS preflight check
           'Content-Type': 'text/plain', 
-          // If localtunnel ever throws a 403, uncomment the line below:
-          // 'Bypass-Tunnel-Reminder': 'true'
+          // 👇 This tells Localtunnel to skip the "Friendly Reminder" 403 screen
+          'bypass-tunnel-reminder': 'true',
         },
         body: JSON.stringify(payload),
       });
@@ -118,8 +119,8 @@ export async function calculateDose(drug: string, weightKg: number, weightLbs: n
       const response = await fetch(LOCAL_API_URL, {
         method: 'POST',
         headers: { 
-          // 👇 Same fix applied here
           'Content-Type': 'text/plain', 
+          'bypass-tunnel-reminder': 'true', // Applied fix here too
         },
         body: JSON.stringify(payload),
       });
