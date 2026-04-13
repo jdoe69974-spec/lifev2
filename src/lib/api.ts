@@ -57,11 +57,10 @@ export async function processTranscript(
   try {
     const response = await fetch(LOCAL_API_URL, {
       method: 'POST',
-      // ✅ FIX 2: Added the ngrok bypass header
       headers: { 
-        // 👇 CHANGED FROM application/json TO text/plain
-        'Content-Type': 'text/plain',
-        'ngrok-skip-browser-warning': 'true'
+        // 👇 CHANGED from application/json TO text/plain
+        'Content-Type': 'text/plain'
+        // ❌ REMOVED: 'ngrok-skip-browser-warning': 'true'
       },
       body: JSON.stringify(payload),
     });
