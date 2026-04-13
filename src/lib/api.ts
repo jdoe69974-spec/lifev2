@@ -13,7 +13,7 @@ export interface DosageData {
   justification: string;
 }
 
-// ⚠️ TO DO: Replace with your key from https://console.groq.com
+// Keep your key here
 const GROQ_API_KEY = "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"; 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -57,15 +57,26 @@ export async function processTranscript(
     const result = await response.json();
     const rawData = JSON.parse(result.choices[0].message.content);
 
+    // 🛠️ CRITICAL FIX: Convert initialVitals to string if it is an object
+    // This prevents the React Error #31 (Black Screen)
+    let vitalsDisplay = "";
+    if (typeof rawData.initialVitals === 'object' && rawData.initialVitals !== null) {
+      vitalsDisplay = Object.entries(rawData.initialVitals)
+        .map(([key, val]) => `${key}: ${val}`)
+        .join(", ");
+    } else {
+      vitalsDisplay = String(rawData.initialVitals || "Not recorded");
+    }
+
     const pcr: PCRData = {
-      chiefComplaint: rawData.chiefComplaint,
-      mechanismOfInjury: rawData.mechanismOfInjury,
-      initialVitals: rawData.initialVitals,
-      interventions: rawData.interventions,
-      triageRecommendation: rawData.triageRecommendation,
+      chiefComplaint: String(rawData.chiefComplaint || ""),
+      mechanismOfInjury: String(rawData.mechanismOfInjury || ""),
+      initialVitals: vitalsDisplay, 
+      interventions: Array.isArray(rawData.interventions) ? rawData.interventions : [],
+      triageRecommendation: String(rawData.triageRecommendation || ""),
     };
 
-    const recommendation = rawData.clinicalRecommendation || "Report analyzed.";
+    const recommendation = String(rawData.clinicalRecommendation || "Report analyzed.");
 
     return { pcr, recommendation };
   } catch (error: any) {
@@ -112,7 +123,15 @@ export async function calculateDose(
     if (!response.ok) throw new Error("Cloud AI is unavailable.");
 
     const result = await response.json();
-    return JSON.parse(result.choices[0].message.content);
+    const rawData = JSON.parse(result.choices[0].message.content);
+    
+    // Ensure all returned fields are strings/numbers, not objects
+    return {
+      drug: String(rawData.drug || drug),
+      weightKg: Number(rawData.weightKg || weightKg),
+      calculatedDose: String(rawData.calculatedDose || "Error calculating"),
+      justification: String(rawData.justification || "")
+    };
   } catch (error: any) {
     console.error("Dose Calculation Error:", error);
     throw new Error(`Dose Error: ${error.message}`);
