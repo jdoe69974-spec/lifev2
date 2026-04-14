@@ -19,12 +19,19 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 /**
  * 1. AI-POWERED TRANSCRIPT PROCESSING
  * Summarizes clinical data from speech using Groq.
+ * Includes a detailLevel parameter for toggling verbosity.
  */
 export async function processTranscript(
   fullContext: string,
-  county: string
+  county: string,
+  detailLevel: 'simple' | 'detailed' = 'simple'
 ): Promise<{ pcr: PCRData; recommendation: string }> {
   
+  // Dynamically adjust instructions based on the requested detail level
+  const verbosityInstructions = detailLevel === 'detailed'
+    ? "5. Provide a highly descriptive, comprehensive medical summary. Expand on the mechanism of injury, capture nuanced clinical observations in the chief complaint, and provide a thorough clinical recommendation."
+    : "5. Keep all fields extremely brief and to the point. Provide a concise clinical recommendation (under 15 words) based ONLY on facts.";
+
   const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
   Synthesize the chronological narration into a JSON structure. 
 
@@ -33,7 +40,7 @@ export async function processTranscript(
   2. If vitals (BP, HR, RR, O2, Temp) are NOT mentioned, set that field to "Not recorded".
   3. If MOI or Chief Complaint is not clear, set it to "Information not provided".
   4. DO NOT hallucinate statistics.
-  5. Provide a concise clinical recommendation (under 15 words) based ONLY on facts.
+  ${verbosityInstructions}
 
   Respond ONLY with a JSON object containing:
   chiefComplaint, mechanismOfInjury, initialVitals, interventions (array), triageRecommendation, clinicalRecommendation.`;
@@ -45,7 +52,8 @@ export async function processTranscript(
       { role: "user", content: `Encounter context: ${fullContext}` }
     ],
     response_format: { type: "json_object" },
-    temperature: 0.1
+    // Increase temperature slightly for detailed mode to allow more descriptive language
+    temperature: detailLevel === 'detailed' ? 0.3 : 0.1 
   };
 
   try {
