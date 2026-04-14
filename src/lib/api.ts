@@ -27,7 +27,7 @@ let isTextbookLoaded = false;
 export async function loadTextbookData() {
   if (isTextbookLoaded) return;
   try {
-    const response = await fetch('/textbook_index.json');
+    const response = await fetch('textbook_index.json');
     if (!response.ok) throw new Error("File not found or unreadable.");
     textbookData = await response.json();
     isTextbookLoaded = true;
