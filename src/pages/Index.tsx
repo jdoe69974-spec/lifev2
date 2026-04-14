@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Language, t } from '@/lib/translations';
-// Notice we import speakText now instead of generateTTS
 import { processTranscript, speakText, PCRData, SessionEntry } from '@/lib/api';
 import { AppHeader } from '@/components/AppHeader';
 import { VoiceInput } from '@/components/VoiceInput';
@@ -20,10 +19,7 @@ export default function Index() {
   const [lang, setLang] = useState<Language>('en');
   const [dark, setDark] = useState(true);
   const [county, setCounty] = useState('Washington');
-  
-  // NEW: State for tracking our detailed/simple mode
   const [detailLevel, setDetailLevel] = useState<'simple' | 'detailed'>('simple');
-  
   const [isRecording, setIsRecording] = useState(false);
   const [status, setStatus] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -75,14 +71,32 @@ export default function Index() {
     try {
       const fullContext = getFullContext(text);
       
-      // NEW: Pass the detailLevel to our updated API function
-      const { pcr: newPcr, recommendation: rec } = await processTranscript(
+      const { pcr: rawPcr, recommendation: rec } = await processTranscript(
         fullContext, 
         county || 'Unspecified Arkansas County',
         detailLevel 
       );
+
+      // CRITICAL FIX: Aggressive Sanitization
+      // This prevents the "Black Screen Crash" by guaranteeing the AI hasn't
+      // sneaked any unrenderable JSON objects into the React state.
+      const safePcr: PCRData = {
+        chiefComplaint: typeof rawPcr.chiefComplaint === 'string' ? rawPcr.chiefComplaint : JSON.stringify(rawPcr.chiefComplaint || ""),
+        mechanismOfInjury: typeof rawPcr.mechanismOfInjury === 'string' ? rawPcr.mechanismOfInjury : JSON.stringify(rawPcr.mechanismOfInjury || ""),
+        initialVitals: typeof rawPcr.initialVitals === 'string' ? rawPcr.initialVitals : JSON.stringify(rawPcr.initialVitals || ""),
+        triageRecommendation: typeof rawPcr.triageRecommendation === 'string' ? rawPcr.triageRecommendation : JSON.stringify(rawPcr.triageRecommendation || ""),
+        interventions: Array.isArray(rawPcr.interventions) 
+          ? rawPcr.interventions.map((item: any) => {
+              // If the AI returns a detailed object like {"drug": "O2", "dose": "15L"}, flatten it.
+              if (typeof item === 'object' && item !== null) {
+                return Object.values(item).join(' - ');
+              }
+              return String(item);
+            })
+          : []
+      };
       
-      setPcr(newPcr);
+      setPcr(safePcr);
       setRecommendation(rec);
 
       const timestamp = new Date().toLocaleTimeString('en-US', { 
@@ -94,9 +108,9 @@ export default function Index() {
       const entry: SessionEntry = {
         time: timestamp,
         transcript: text,
-        chiefComplaint: newPcr.chiefComplaint,
+        chiefComplaint: safePcr.chiefComplaint,
         recommendation: rec,
-        interventions: (newPcr.interventions || []).join(', '),
+        interventions: (safePcr.interventions || []).join(', '),
       };
 
       setSessionHistory(prev => [entry, ...prev].slice(0, 2));
@@ -112,7 +126,7 @@ export default function Index() {
     } finally {
       setTimeout(() => setIsProcessing(false), 2000);
     }
-  }, [lang, county, detailLevel, getFullContext, isProcessing]); // Added detailLevel to dependencies
+  }, [lang, county, detailLevel, getFullContext, isProcessing]);
 
   const toggleRecording = useCallback(() => {
     if (!('webkitSpeechRecognition' in window)) {
@@ -178,7 +192,6 @@ export default function Index() {
           <div className="space-y-6">
             <div className="p-5 bg-card rounded-xl shadow-lg border border-border">
               
-              {/* NEW: Added a Flex container to hold the County Select and Detail Toggle side-by-side */}
               <div className="flex flex-col sm:flex-row gap-4 mb-4">
                 <div className="flex-1">
                   <CountySelect lang={lang} value={county} onChange={setCounty} />
