@@ -27,7 +27,6 @@ export async function processTranscript(
   detailLevel: 'simple' | 'detailed' = 'simple'
 ): Promise<{ pcr: PCRData; recommendation: string }> {
   
-  // Dynamically adjust instructions based on the requested detail level
   const verbosityInstructions = detailLevel === 'detailed'
     ? "5. Provide a highly descriptive, comprehensive medical summary. Expand on the mechanism of injury, capture nuanced clinical observations in the chief complaint, and provide a thorough clinical recommendation."
     : "5. Keep all fields extremely brief and to the point. Provide a concise clinical recommendation (under 15 words) based ONLY on facts.";
@@ -52,7 +51,6 @@ export async function processTranscript(
       { role: "user", content: `Encounter context: ${fullContext}` }
     ],
     response_format: { type: "json_object" },
-    // Increase temperature slightly for detailed mode to allow more descriptive language
     temperature: detailLevel === 'detailed' ? 0.3 : 0.1 
   };
 
@@ -71,7 +69,6 @@ export async function processTranscript(
     const result = await response.json();
     const rawData = JSON.parse(result.choices[0].message.content);
 
-    // Prevent React Error #31 by ensuring vitals is a string
     let vitalsDisplay = "";
     if (typeof rawData.initialVitals === 'object' && rawData.initialVitals !== null) {
       vitalsDisplay = Object.entries(rawData.initialVitals)
@@ -114,12 +111,9 @@ export async function calculateDose(
   weightKg: number, 
   weightLbs: number
 ): Promise<DosageData> {
-  // Artificial delay for UX
   await new Promise(r => setTimeout(r, 100));
 
   const selection = drug.toLowerCase();
-  
-  // Find protocol by checking if our keys exist within the selected string
   const protocolKey = Object.keys(PROTOCOLS).find(key => selection.includes(key));
   const protocol = protocolKey ? PROTOCOLS[protocolKey] : null;
 
@@ -140,7 +134,6 @@ export async function calculateDose(
     isCapped = true;
   }
 
-  // Clean up the drug name for display (removes the "(for...)" part)
   const displayName = drug.split('(')[0].trim();
 
   return {
@@ -154,8 +147,12 @@ export async function calculateDose(
 }
 
 /**
- * 3. TEXT TO SPEECH (With iOS/iPadOS Failsafes)
+ * 3. TEXT TO SPEECH (Bulletproof iOS Version)
  */
+
+// Store globally to prevent Safari's aggressive Garbage Collection from killing the audio mid-sentence
+let globalUtterance: SpeechSynthesisUtterance | null = null;
+
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
   return new Promise<void>((resolve) => {
     if (!('speechSynthesis' in window)) {
@@ -163,7 +160,6 @@ export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
       return;
     }
 
-    // Failsafe mechanism for iOS Safari which frequently drops the 'onend' event
     let isResolved = false;
     const safeResolve = () => {
       if (!isResolved) {
@@ -172,37 +168,42 @@ export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
       }
     };
 
-    // Cancel any currently playing speech
-    window.speechSynthesis.cancel();
+    // Wake up the speech engine in case iOS put it to sleep
+    window.speechSynthesis.resume();
 
-    // iOS often needs a tiny delay after cancel() before it accepts a new utterance
+    // Only cancel if it's currently actively speaking. 
+    // Blindly calling cancel() on iOS causes the next speak() to fail.
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel();
+    }
+
     setTimeout(() => {
       const utterance = new SpeechSynthesisUtterance(text);
+      
+      // Save to global scope
+      globalUtterance = utterance;
+      
       utterance.lang = lang;
       
-      // Resolve normally if the browser behaves
       utterance.onend = safeResolve;
       
-      // Resolve if the browser throws an invisible audio error
       utterance.onerror = (e) => {
         console.warn("Speech Synthesis Error caught:", e);
-        safeResolve();
+        safeResolve(); // Resolve anyway so the UI NEVER freezes
       };
 
       window.speechSynthesis.speak(utterance);
 
-      // THE ULTIMATE FAILSAFE: 
-      // Force the promise to resolve after a calculated timeout based on text length.
-      // Assumes ~50ms per character, minimum 3 seconds, maximum 15 seconds.
-      const fallbackTime = Math.min(Math.max(text.length * 50, 3000), 15000);
+      // Failsafe timeout based on text length (assume ~60ms per character)
+      const fallbackTime = Math.min(Math.max(text.length * 60, 3000), 15000);
       setTimeout(safeResolve, fallbackTime);
       
-    }, 50);
+    }, 100); // 100ms delay gives iOS WebKit time to clear its audio buffer
   });
 }
 
 /**
- * Shared interface for Session History (added for completeness with Index.tsx)
+ * Shared interface for Session History
  */
 export interface SessionEntry {
   time: string;
