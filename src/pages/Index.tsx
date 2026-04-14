@@ -185,7 +185,7 @@ export default function Index() {
             <Sheet>
               <SheetTrigger asChild>
                 <button 
-                  disabled={citations.length === 0}
+                  disabled={false}
                   className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg font-bold hover:bg-primary/20 transition-all disabled:opacity-30"
                 >
                   <div className="relative flex h-2 w-2">
