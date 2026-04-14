@@ -18,8 +18,6 @@ const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /**
  * 1. AI-POWERED TRANSCRIPT PROCESSING
- * Summarizes clinical data from speech using Groq.
- * Includes a detailLevel parameter for toggling verbosity.
  */
 export async function processTranscript(
   fullContext: string,
@@ -96,7 +94,6 @@ export async function processTranscript(
 
 /**
  * 2. DETERMINISTIC DOSAGE CALCULATION (Non-AI)
- * Matches keys directly to DRUG_OPTIONS values for 100% accuracy.
  */
 const PROTOCOLS: Record<string, { dosePerKg: number; unit: string; max?: number }> = {
   "epinephrine 1:1,000 (im for anaphylaxis)": { dosePerKg: 0.01, unit: "mg", max: 0.5 },
@@ -147,58 +144,77 @@ export async function calculateDose(
 }
 
 /**
- * 3. TEXT TO SPEECH (Bulletproof iOS Version)
+ * 3. TEXT TO SPEECH (Flight Recorder Debug Version)
  */
-
-// Store globally to prevent Safari's aggressive Garbage Collection from killing the audio mid-sentence
 let globalUtterance: SpeechSynthesisUtterance | null = null;
+let speakAttemptCount = 0; // Track which generation attempt this is
 
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
+  speakAttemptCount++;
+  const currentAttempt = speakAttemptCount;
+
   return new Promise<void>((resolve) => {
+    console.log(`\n[TTS #${currentAttempt}] 🚀 INIT: Requesting speech...`);
+    console.log(`[TTS #${currentAttempt}] 📊 STATE: speaking: ${window.speechSynthesis.speaking}, pending: ${window.speechSynthesis.pending}, paused: ${window.speechSynthesis.paused}`);
+
     if (!('speechSynthesis' in window)) {
+      console.error(`[TTS #${currentAttempt}] ❌ FATAL: speechSynthesis not supported.`);
       resolve();
       return;
     }
 
     let isResolved = false;
-    const safeResolve = () => {
+    const safeResolve = (reason: string) => {
       if (!isResolved) {
         isResolved = true;
+        console.log(`[TTS #${currentAttempt}] ✅ RESOLVED via: ${reason}`);
         resolve();
       }
     };
 
-    // Wake up the speech engine in case iOS put it to sleep
-    window.speechSynthesis.resume();
+    // Attempt to wake the engine
+    if (window.speechSynthesis.paused) {
+      console.log(`[TTS #${currentAttempt}] ⚠️ Engine is paused. Attempting resume()...`);
+      window.speechSynthesis.resume();
+    }
 
-    // Only cancel if it's currently actively speaking. 
-    // Blindly calling cancel() on iOS causes the next speak() to fail.
+    // Attempt to clear the queue
     if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      console.log(`[TTS #${currentAttempt}] 🛑 Engine is busy. Calling cancel()...`);
       window.speechSynthesis.cancel();
     }
 
+    // Delay to let the browser breathe
     setTimeout(() => {
+      console.log(`[TTS #${currentAttempt}] 📝 Creating Utterance...`);
       const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Save to global scope
-      globalUtterance = utterance;
-      
+      globalUtterance = utterance; 
       utterance.lang = lang;
+
+      // --- LIFECYCLE TRACKERS ---
+      utterance.onstart = () => console.log(`[TTS #${currentAttempt}] 🎤 EVENT: onstart`);
+      utterance.onend = () => {
+        console.log(`[TTS #${currentAttempt}] 🏁 EVENT: onend`);
+        safeResolve('onend_success');
+      };
+      utterance.onpause = () => console.log(`[TTS #${currentAttempt}] ⏸️ EVENT: onpause`);
+      utterance.onresume = () => console.log(`[TTS #${currentAttempt}] ▶️ EVENT: onresume`);
       
-      utterance.onend = safeResolve;
-      
-      utterance.onerror = (e) => {
-        console.warn("Speech Synthesis Error caught:", e);
-        safeResolve(); // Resolve anyway so the UI NEVER freezes
+      // The crucial error catcher
+      utterance.onerror = (e: any) => {
+        // e.error holds the specific reason (e.g., 'not-allowed', 'interrupted')
+        console.error(`[TTS #${currentAttempt}] 🚨 EVENT: onerror -> Reason: "${e.error}"`);
+        safeResolve(`onerror_caught_${e.error}`); 
       };
 
+      console.log(`[TTS #${currentAttempt}] 🗣️ Calling speak()...`);
       window.speechSynthesis.speak(utterance);
 
-      // Failsafe timeout based on text length (assume ~60ms per character)
+      // Failsafe
       const fallbackTime = Math.min(Math.max(text.length * 60, 3000), 15000);
-      setTimeout(safeResolve, fallbackTime);
+      setTimeout(() => safeResolve('failsafe_timeout'), fallbackTime);
       
-    }, 100); // 100ms delay gives iOS WebKit time to clear its audio buffer
+    }, 250); // Increased the delay slightly for testing
   });
 }
 
