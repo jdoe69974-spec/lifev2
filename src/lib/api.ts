@@ -1,6 +1,3 @@
-// REMOVED: import textbookData from './textbook_index.json';
-// We now load this dynamically from the public folder so Vite doesn't crash on build.
-
 export interface PCRData {
   chiefComplaint?: string;
   mechanismOfInjury?: string;
@@ -34,6 +31,7 @@ export async function loadTextbookData() {
     if (!response.ok) throw new Error("File not found or unreadable.");
     textbookData = await response.json();
     isTextbookLoaded = true;
+    console.log(`✅ SUCCESS: Loaded ${textbookData.length} textbook protocols into memory!`);
   } catch (error) {
     console.warn("Failed to load or parse textbook JSON from public folder:", error);
     // Fallback to empty array so the app doesn't crash, it just won't have citations.
