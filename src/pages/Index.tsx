@@ -77,7 +77,7 @@ export default function Index() {
         detailLevel 
       );
 
-      // Aggressive Sanitization to prevent the React Black Screen Crash
+      // Aggressive Sanitization
       const safePcr: PCRData = {
         chiefComplaint: typeof rawPcr.chiefComplaint === 'string' ? rawPcr.chiefComplaint : JSON.stringify(rawPcr.chiefComplaint || ""),
         mechanismOfInjury: typeof rawPcr.mechanismOfInjury === 'string' ? rawPcr.mechanismOfInjury : JSON.stringify(rawPcr.mechanismOfInjury || ""),
@@ -114,6 +114,8 @@ export default function Index() {
 
       setStatus(t(lang, 'ttsReady'));
       setIsPlaying(true);
+      
+      // Call our newly upgraded Chunking TTS
       await speakText(rec, lang === 'es' ? 'es-US' : 'en-US');
       setIsPlaying(false);
 
@@ -131,18 +133,22 @@ export default function Index() {
       return;
     }
 
-    // --- THE IOS SILENT UNLOCKER ---
-    // Prove to Safari that the user interacted, unlocking TTS for after the AI responds.
-    const unlock = new SpeechSynthesisUtterance('');
-    window.speechSynthesis.speak(unlock);
-    window.speechSynthesis.resume();
-    // -------------------------------
+    // --- THE WEBKIT PRIMER HACK ---
+    // Instantly primes the audio engine on physical interaction.
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.resume();
+      const primer = new SpeechSynthesisUtterance('');
+      primer.volume = 0; // Silent
+      primer.rate = 1;
+      window.speechSynthesis.speak(primer);
+    }
 
     if (isRecording && recognitionRef.current) {
       recognitionRef.current.stop();
       return;
     }
 
+    // Halt any current speech when recording starts again
     window.speechSynthesis.cancel();
     setIsPlaying(false);
 
