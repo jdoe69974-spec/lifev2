@@ -77,9 +77,7 @@ export default function Index() {
         detailLevel 
       );
 
-      // CRITICAL FIX: Aggressive Sanitization
-      // This prevents the "Black Screen Crash" by guaranteeing the AI hasn't
-      // sneaked any unrenderable JSON objects into the React state.
+      // Aggressive Sanitization to prevent the React Black Screen Crash
       const safePcr: PCRData = {
         chiefComplaint: typeof rawPcr.chiefComplaint === 'string' ? rawPcr.chiefComplaint : JSON.stringify(rawPcr.chiefComplaint || ""),
         mechanismOfInjury: typeof rawPcr.mechanismOfInjury === 'string' ? rawPcr.mechanismOfInjury : JSON.stringify(rawPcr.mechanismOfInjury || ""),
@@ -87,7 +85,6 @@ export default function Index() {
         triageRecommendation: typeof rawPcr.triageRecommendation === 'string' ? rawPcr.triageRecommendation : JSON.stringify(rawPcr.triageRecommendation || ""),
         interventions: Array.isArray(rawPcr.interventions) 
           ? rawPcr.interventions.map((item: any) => {
-              // If the AI returns a detailed object like {"drug": "O2", "dose": "15L"}, flatten it.
               if (typeof item === 'object' && item !== null) {
                 return Object.values(item).join(' - ');
               }
@@ -133,6 +130,13 @@ export default function Index() {
       setStatus(t(lang, 'speechNotSupported'));
       return;
     }
+
+    // --- THE IOS SILENT UNLOCKER ---
+    // Prove to Safari that the user interacted, unlocking TTS for after the AI responds.
+    const unlock = new SpeechSynthesisUtterance('');
+    window.speechSynthesis.speak(unlock);
+    window.speechSynthesis.resume();
+    // -------------------------------
 
     if (isRecording && recognitionRef.current) {
       recognitionRef.current.stop();
