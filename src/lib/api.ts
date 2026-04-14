@@ -1,3 +1,5 @@
+import textbookData from './textbook_index.json';
+
 export interface PCRData {
   chiefComplaint?: string;
   mechanismOfInjury?: string;
@@ -17,7 +19,34 @@ const GROQ_API_KEY = "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";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /**
+ * LOCAL TEXTBOOK SEARCH
+ * Scans your generated JSON index for the most relevant protocols
+ * based on the keywords detected in the patient report.
+ */
+function findRelevantProtocols(transcript: string): string {
+  if (!textbookData || !Array.isArray(textbookData)) return "";
+  
+  // Clean the transcript into keywords (ignoring short words like 'the', 'is', 'and')
+  const keywords = transcript.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+  
+  const matches = (textbookData as any[])
+    .map(chunk => {
+      let score = 0;
+      keywords.forEach(word => {
+        if (chunk.content.toLowerCase().includes(word)) score++;
+      });
+      return { ...chunk, score };
+    })
+    .filter(chunk => chunk.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3); // Take top 3 relevant sections
+
+  return matches.map(m => m.content).join('\n---\n');
+}
+
+/**
  * 1. AI-POWERED TRANSCRIPT PROCESSING
+ * Summarizes clinical data and injects local textbook protocols into the AI's "brain."
  */
 export async function processTranscript(
   fullContext: string,
@@ -25,18 +54,22 @@ export async function processTranscript(
   detailLevel: 'simple' | 'detailed' = 'simple'
 ): Promise<{ pcr: PCRData; recommendation: string }> {
   
+  // Search the textbook index first
+  const relevantProtocols = findRelevantProtocols(fullContext);
+
   const verbosityInstructions = detailLevel === 'detailed'
-    ? "5. Provide a highly descriptive, comprehensive medical summary. Expand on the mechanism of injury, capture nuanced clinical observations in the chief complaint, and provide a thorough clinical recommendation."
-    : "5. Keep all fields extremely brief and to the point. Provide a concise clinical recommendation (under 15 words) based ONLY on facts.";
+    ? "5. Provide a highly descriptive, comprehensive medical summary. Expand on the mechanism of injury and nuanced observations."
+    : "5. Keep all fields extremely brief. Provide a concise clinical recommendation (under 15 words).";
 
   const systemPrompt = `You are an AI clinical assistant for EMS in ${county}, Arkansas. 
-  Synthesize the chronological narration into a JSON structure. 
+  
+  REFERENCED TEXTBOOK PROTOCOLS (Use these for accuracy):
+  ${relevantProtocols || "No specific textbook protocol matches found."}
 
   STRICT RULES:
-  1. Use ONLY information explicitly stated in the transcript.
-  2. If vitals (BP, HR, RR, O2, Temp) are NOT mentioned, set that field to "Not recorded".
-  3. If MOI or Chief Complaint is not clear, set it to "Information not provided".
-  4. DO NOT hallucinate statistics.
+  1. Use ONLY stated facts + the REFERENCED PROTOCOLS to guide your recommendation.
+  2. Synthesize the narration into a JSON structure.
+  3. If vitals not mentioned, set "Not recorded".
   ${verbosityInstructions}
 
   Respond ONLY with a JSON object containing:
@@ -94,6 +127,7 @@ export async function processTranscript(
 
 /**
  * 2. DETERMINISTIC DOSAGE CALCULATION
+ * Hard-coded protocols for 100% mathematical accuracy.
  */
 const PROTOCOLS: Record<string, { dosePerKg: number; unit: string; max?: number }> = {
   "epinephrine 1:1,000 (im for anaphylaxis)": { dosePerKg: 0.01, unit: "mg", max: 0.5 },
@@ -103,84 +137,57 @@ const PROTOCOLS: Record<string, { dosePerKg: number; unit: string; max?: number 
   "naloxone (for opioid overdose)": { dosePerKg: 0.1, unit: "mg", max: 2 },
 };
 
-export async function calculateDose(
-  drug: string, 
-  weightKg: number, 
-  weightLbs: number
-): Promise<DosageData> {
+export async function calculateDose(drug: string, weightKg: number, weightLbs: number): Promise<DosageData> {
   await new Promise(r => setTimeout(r, 100));
-
   const selection = drug.toLowerCase();
   const protocolKey = Object.keys(PROTOCOLS).find(key => selection.includes(key));
   const protocol = protocolKey ? PROTOCOLS[protocolKey] : null;
 
   if (!protocol) {
-    return {
-      drug,
-      weightKg,
-      calculatedDose: "Protocol not found",
-      justification: "Manual calculation required. Verify protocol for this specific concentration."
-    };
+    return { drug, weightKg, calculatedDose: "Protocol not found", justification: "Manual calculation required." };
   }
 
   let dose = weightKg * protocol.dosePerKg;
   let isCapped = false;
-
   if (protocol.max && dose > protocol.max) {
     dose = protocol.max;
     isCapped = true;
   }
 
-  const displayName = drug.split('(')[0].trim();
-
   return {
-    drug: displayName,
+    drug: drug.split('(')[0].trim(),
     weightKg: parseFloat(weightKg.toFixed(2)),
     calculatedDose: `${dose.toFixed(2)} ${protocol.unit}`,
-    justification: isCapped 
-      ? `Calculated ${dose.toFixed(2)}${protocol.unit} (Capped at Max)`
-      : `Math: ${protocol.dosePerKg}${protocol.unit}/kg × ${weightKg.toFixed(2)}kg`
+    justification: isCapped ? `Capped at Max` : `Math: ${protocol.dosePerKg}${protocol.unit}/kg × ${weightKg.toFixed(2)}kg`
   };
 }
 
 /**
- * 3. TEXT TO SPEECH: THE CHUNKING UPGRADE
- * This slices long texts into smaller sentences to bypass Apple WebKit's fatal memory limits.
+ * 3. TEXT TO SPEECH (Sentence Chunking Engine)
+ * Prevents the iPad from bricking the audio engine by feeding it 
+ * one sentence at a time instead of one long block.
  */
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
   return new Promise((resolve) => {
-    if (!('speechSynthesis' in window)) {
-      return resolve();
-    }
-
+    if (!('speechSynthesis' in window)) return resolve();
     const synth = window.speechSynthesis;
     
-    // 1. Clear any stuck audio right away
-    synth.cancel();
+    // Resume engine if iPad suspended it
+    synth.resume();
 
-    // 2. Break the text down into small, digestible chunks via regex
-    // This matches sentences ending in punctuation, or just chunks it up safely.
+    // Slicing text into sentences
     const chunks = text.match(/[^.!?]+[.!?]+/g) || [text];
     let currentChunkIndex = 0;
 
-    // 3. The recursive queue processor
     const speakNextChunk = () => {
-      // Base Case: If we read all chunks, we are done!
-      if (currentChunkIndex >= chunks.length) {
-        return resolve();
-      }
-
+      if (currentChunkIndex >= chunks.length) return resolve();
       const chunkText = chunks[currentChunkIndex].trim();
-      if (!chunkText) {
-        currentChunkIndex++;
-        return speakNextChunk();
-      }
+      if (!chunkText) { currentChunkIndex++; return speakNextChunk(); }
 
       const utterance = new SpeechSynthesisUtterance(chunkText);
       utterance.lang = lang;
-      utterance.rate = 1.0;
       
-      // Global GC prevention for the current chunk
+      // Global tracking to prevent Apple garbage collection
       (window as any)._activeUtterance = utterance;
 
       let chunkResolved = false;
@@ -188,34 +195,24 @@ export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
         if (!chunkResolved) {
           chunkResolved = true;
           currentChunkIndex++;
-          // A tiny 50ms gap between sentences sounds natural and lets WebKit breathe
           setTimeout(speakNextChunk, 50); 
         }
       };
 
       utterance.onend = advanceQueue;
+      utterance.onerror = advanceQueue;
       
-      utterance.onerror = (e) => {
-        console.warn(`[TTS Chunk Failed]: ${e.error}`);
-        advanceQueue(); // If a chunk fails, skip it and keep reading the next one to prevent freeze
-      };
-
-      // Failsafe per chunk (max 5 seconds per sentence)
-      const chunkTimeout = Math.max(chunkText.length * 80, 5000);
-      setTimeout(advanceQueue, chunkTimeout);
-
-      // Speak this specific chunk
+      // Safety timeout: stop waiting after 7 seconds per sentence
+      setTimeout(advanceQueue, 7000);
+      
       synth.speak(utterance);
+      synth.resume(); // Safari often needs a kick-start after calling speak()
     };
 
-    // Start the process slightly delayed to let the initial cancel() clear the pipes
     setTimeout(speakNextChunk, 100);
   });
 }
 
-/**
- * Shared interface for Session History
- */
 export interface SessionEntry {
   time: string;
   transcript: string;
