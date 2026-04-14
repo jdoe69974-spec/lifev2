@@ -154,7 +154,7 @@ export async function calculateDose(
 }
 
 /**
- * 3. TEXT TO SPEECH
+ * 3. TEXT TO SPEECH (With iOS/iPadOS Failsafes)
  */
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -162,10 +162,52 @@ export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
       resolve();
       return;
     }
+
+    // Failsafe mechanism for iOS Safari which frequently drops the 'onend' event
+    let isResolved = false;
+    const safeResolve = () => {
+      if (!isResolved) {
+        isResolved = true;
+        resolve();
+      }
+    };
+
+    // Cancel any currently playing speech
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang;
-    utterance.onend = () => resolve();
-    window.speechSynthesis.speak(utterance);
+
+    // iOS often needs a tiny delay after cancel() before it accepts a new utterance
+    setTimeout(() => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      
+      // Resolve normally if the browser behaves
+      utterance.onend = safeResolve;
+      
+      // Resolve if the browser throws an invisible audio error
+      utterance.onerror = (e) => {
+        console.warn("Speech Synthesis Error caught:", e);
+        safeResolve();
+      };
+
+      window.speechSynthesis.speak(utterance);
+
+      // THE ULTIMATE FAILSAFE: 
+      // Force the promise to resolve after a calculated timeout based on text length.
+      // Assumes ~50ms per character, minimum 3 seconds, maximum 15 seconds.
+      const fallbackTime = Math.min(Math.max(text.length * 50, 3000), 15000);
+      setTimeout(safeResolve, fallbackTime);
+      
+    }, 50);
   });
+}
+
+/**
+ * Shared interface for Session History (added for completeness with Index.tsx)
+ */
+export interface SessionEntry {
+  time: string;
+  transcript: string;
+  chiefComplaint?: string;
+  recommendation: string;
+  interventions: string;
 }
