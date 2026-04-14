@@ -93,7 +93,7 @@ export async function processTranscript(
 }
 
 /**
- * 2. DETERMINISTIC DOSAGE CALCULATION (Non-AI)
+ * 2. DETERMINISTIC DOSAGE CALCULATION
  */
 const PROTOCOLS: Record<string, { dosePerKg: number; unit: string; max?: number }> = {
   "epinephrine 1:1,000 (im for anaphylaxis)": { dosePerKg: 0.01, unit: "mg", max: 0.5 },
@@ -144,89 +144,72 @@ export async function calculateDose(
 }
 
 /**
- * 3. TEXT TO SPEECH (Auto-Retry Loop Engine)
+ * 3. TEXT TO SPEECH: THE CHUNKING UPGRADE
+ * This slices long texts into smaller sentences to bypass Apple WebKit's fatal memory limits.
  */
-let globalUtterance: SpeechSynthesisUtterance | null = null;
-
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
-  return new Promise<void>((resolve) => {
+  return new Promise((resolve) => {
     if (!('speechSynthesis' in window)) {
-      resolve();
-      return;
+      return resolve();
     }
 
-    let isResolved = false;
+    const synth = window.speechSynthesis;
     
-    // --- RETRY SETTINGS ---
-    const maxRetries = 2; // Will attempt a total of 3 times (Attempt 0, 1, and 2)
-    const retryDelayMs = 3000; // Wait 3 seconds before trying again. Change to 5000 if needed!
+    // 1. Clear any stuck audio right away
+    synth.cancel();
 
-    const safeResolve = () => {
-      if (!isResolved) {
-        isResolved = true;
-        resolve();
-      }
-    };
+    // 2. Break the text down into small, digestible chunks via regex
+    // This matches sentences ending in punctuation, or just chunks it up safely.
+    const chunks = text.match(/[^.!?]+[.!?]+/g) || [text];
+    let currentChunkIndex = 0;
 
-    // The recursive attempt function
-    const attemptSpeak = (attemptIndex: number) => {
-      if (isResolved) return; // Stop if we already successfully finished
-
-      console.log(`[TTS] Attempt ${attemptIndex + 1} of ${maxRetries + 1}...`);
-
-      // 1. Wake the engine
-      window.speechSynthesis.resume();
-
-      // 2. Clear any stuck audio
-      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-        window.speechSynthesis.cancel();
+    // 3. The recursive queue processor
+    const speakNextChunk = () => {
+      // Base Case: If we read all chunks, we are done!
+      if (currentChunkIndex >= chunks.length) {
+        return resolve();
       }
 
-      // 3. Wait a moment for Safari to clear its cache, then speak
-      setTimeout(() => {
-        if (isResolved) return; // Double check we haven't resolved while waiting
+      const chunkText = chunks[currentChunkIndex].trim();
+      if (!chunkText) {
+        currentChunkIndex++;
+        return speakNextChunk();
+      }
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        globalUtterance = utterance; 
-        utterance.lang = lang;
+      const utterance = new SpeechSynthesisUtterance(chunkText);
+      utterance.lang = lang;
+      utterance.rate = 1.0;
+      
+      // Global GC prevention for the current chunk
+      (window as any)._activeUtterance = utterance;
 
-        // Success!
-        utterance.onend = safeResolve;
-        
-        // Error Handler with RETRY logic
-        utterance.onerror = (e: any) => {
-          console.warn(`[TTS Error on Attempt ${attemptIndex + 1}]: "${e.error}"`);
-          
-          if (attemptIndex < maxRetries) {
-            console.log(`[TTS] iOS crashed. Retrying in ${retryDelayMs / 1000} seconds...`);
-            setTimeout(() => attemptSpeak(attemptIndex + 1), retryDelayMs);
-          } else {
-            console.error("[TTS] Max retries reached. Forcing unlock.");
-            safeResolve(); // Resolve anyway so your UI never freezes
-          }
-        };
+      let chunkResolved = false;
+      const advanceQueue = () => {
+        if (!chunkResolved) {
+          chunkResolved = true;
+          currentChunkIndex++;
+          // A tiny 50ms gap between sentences sounds natural and lets WebKit breathe
+          setTimeout(speakNextChunk, 50); 
+        }
+      };
 
-        window.speechSynthesis.speak(utterance);
+      utterance.onend = advanceQueue;
+      
+      utterance.onerror = (e) => {
+        console.warn(`[TTS Chunk Failed]: ${e.error}`);
+        advanceQueue(); // If a chunk fails, skip it and keep reading the next one to prevent freeze
+      };
 
-        // Failsafe timeout (if iOS drops the onend event completely)
-        const fallbackTime = Math.min(Math.max(text.length * 60, 3000), 15000);
-        setTimeout(() => {
-          if (!isResolved) {
-            console.warn(`[TTS Timeout on Attempt ${attemptIndex + 1}]. Audio hung.`);
-            if (attemptIndex < maxRetries) {
-              console.log(`[TTS] Retrying due to timeout...`);
-              attemptSpeak(attemptIndex + 1);
-            } else {
-              safeResolve();
-            }
-          }
-        }, fallbackTime);
-        
-      }, 250); // 250ms gives the browser enough time to actually execute the cancel() command
+      // Failsafe per chunk (max 5 seconds per sentence)
+      const chunkTimeout = Math.max(chunkText.length * 80, 5000);
+      setTimeout(advanceQueue, chunkTimeout);
+
+      // Speak this specific chunk
+      synth.speak(utterance);
     };
 
-    // Start the first attempt
-    attemptSpeak(0);
+    // Start the process slightly delayed to let the initial cancel() clear the pipes
+    setTimeout(speakNextChunk, 100);
   });
 }
 
