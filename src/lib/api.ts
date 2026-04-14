@@ -144,77 +144,89 @@ export async function calculateDose(
 }
 
 /**
- * 3. TEXT TO SPEECH (Flight Recorder Debug Version)
+ * 3. TEXT TO SPEECH (Auto-Retry Loop Engine)
  */
 let globalUtterance: SpeechSynthesisUtterance | null = null;
-let speakAttemptCount = 0; // Track which generation attempt this is
 
 export function speakText(text: string, lang: string = 'en-US'): Promise<void> {
-  speakAttemptCount++;
-  const currentAttempt = speakAttemptCount;
-
   return new Promise<void>((resolve) => {
-    console.log(`\n[TTS #${currentAttempt}] 🚀 INIT: Requesting speech...`);
-    console.log(`[TTS #${currentAttempt}] 📊 STATE: speaking: ${window.speechSynthesis.speaking}, pending: ${window.speechSynthesis.pending}, paused: ${window.speechSynthesis.paused}`);
-
     if (!('speechSynthesis' in window)) {
-      console.error(`[TTS #${currentAttempt}] ❌ FATAL: speechSynthesis not supported.`);
       resolve();
       return;
     }
 
     let isResolved = false;
-    const safeResolve = (reason: string) => {
+    
+    // --- RETRY SETTINGS ---
+    const maxRetries = 2; // Will attempt a total of 3 times (Attempt 0, 1, and 2)
+    const retryDelayMs = 3000; // Wait 3 seconds before trying again. Change to 5000 if needed!
+
+    const safeResolve = () => {
       if (!isResolved) {
         isResolved = true;
-        console.log(`[TTS #${currentAttempt}] ✅ RESOLVED via: ${reason}`);
         resolve();
       }
     };
 
-    // Attempt to wake the engine
-    if (window.speechSynthesis.paused) {
-      console.log(`[TTS #${currentAttempt}] ⚠️ Engine is paused. Attempting resume()...`);
+    // The recursive attempt function
+    const attemptSpeak = (attemptIndex: number) => {
+      if (isResolved) return; // Stop if we already successfully finished
+
+      console.log(`[TTS] Attempt ${attemptIndex + 1} of ${maxRetries + 1}...`);
+
+      // 1. Wake the engine
       window.speechSynthesis.resume();
-    }
 
-    // Attempt to clear the queue
-    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-      console.log(`[TTS #${currentAttempt}] 🛑 Engine is busy. Calling cancel()...`);
-      window.speechSynthesis.cancel();
-    }
+      // 2. Clear any stuck audio
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+      }
 
-    // Delay to let the browser breathe
-    setTimeout(() => {
-      console.log(`[TTS #${currentAttempt}] 📝 Creating Utterance...`);
-      const utterance = new SpeechSynthesisUtterance(text);
-      globalUtterance = utterance; 
-      utterance.lang = lang;
+      // 3. Wait a moment for Safari to clear its cache, then speak
+      setTimeout(() => {
+        if (isResolved) return; // Double check we haven't resolved while waiting
 
-      // --- LIFECYCLE TRACKERS ---
-      utterance.onstart = () => console.log(`[TTS #${currentAttempt}] 🎤 EVENT: onstart`);
-      utterance.onend = () => {
-        console.log(`[TTS #${currentAttempt}] 🏁 EVENT: onend`);
-        safeResolve('onend_success');
-      };
-      utterance.onpause = () => console.log(`[TTS #${currentAttempt}] ⏸️ EVENT: onpause`);
-      utterance.onresume = () => console.log(`[TTS #${currentAttempt}] ▶️ EVENT: onresume`);
-      
-      // The crucial error catcher
-      utterance.onerror = (e: any) => {
-        // e.error holds the specific reason (e.g., 'not-allowed', 'interrupted')
-        console.error(`[TTS #${currentAttempt}] 🚨 EVENT: onerror -> Reason: "${e.error}"`);
-        safeResolve(`onerror_caught_${e.error}`); 
-      };
+        const utterance = new SpeechSynthesisUtterance(text);
+        globalUtterance = utterance; 
+        utterance.lang = lang;
 
-      console.log(`[TTS #${currentAttempt}] 🗣️ Calling speak()...`);
-      window.speechSynthesis.speak(utterance);
+        // Success!
+        utterance.onend = safeResolve;
+        
+        // Error Handler with RETRY logic
+        utterance.onerror = (e: any) => {
+          console.warn(`[TTS Error on Attempt ${attemptIndex + 1}]: "${e.error}"`);
+          
+          if (attemptIndex < maxRetries) {
+            console.log(`[TTS] iOS crashed. Retrying in ${retryDelayMs / 1000} seconds...`);
+            setTimeout(() => attemptSpeak(attemptIndex + 1), retryDelayMs);
+          } else {
+            console.error("[TTS] Max retries reached. Forcing unlock.");
+            safeResolve(); // Resolve anyway so your UI never freezes
+          }
+        };
 
-      // Failsafe
-      const fallbackTime = Math.min(Math.max(text.length * 60, 3000), 15000);
-      setTimeout(() => safeResolve('failsafe_timeout'), fallbackTime);
-      
-    }, 250); // Increased the delay slightly for testing
+        window.speechSynthesis.speak(utterance);
+
+        // Failsafe timeout (if iOS drops the onend event completely)
+        const fallbackTime = Math.min(Math.max(text.length * 60, 3000), 15000);
+        setTimeout(() => {
+          if (!isResolved) {
+            console.warn(`[TTS Timeout on Attempt ${attemptIndex + 1}]. Audio hung.`);
+            if (attemptIndex < maxRetries) {
+              console.log(`[TTS] Retrying due to timeout...`);
+              attemptSpeak(attemptIndex + 1);
+            } else {
+              safeResolve();
+            }
+          }
+        }, fallbackTime);
+        
+      }, 250); // 250ms gives the browser enough time to actually execute the cancel() command
+    };
+
+    // Start the first attempt
+    attemptSpeak(0);
   });
 }
 
