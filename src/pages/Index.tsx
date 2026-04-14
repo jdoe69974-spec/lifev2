@@ -29,7 +29,6 @@ export default function Index() {
   
   const [isPlaying, setIsPlaying] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  
   const [isCoolingDown, setIsCoolingDown] = useState(false);
 
   const recognitionRef = useRef<any>(null);
@@ -63,6 +62,29 @@ export default function Index() {
       setIsPlaying(true);
       await speakText(recommendation, lang === 'es' ? 'es-US' : 'en-US');
       setIsPlaying(false);
+    }
+  };
+
+  // NEW: The Clear / New Patient Function
+  const handleClear = () => {
+    const confirmMessage = lang === 'es' 
+      ? '¿Estás seguro de que quieres borrar todos los datos del paciente?' 
+      : 'Are you sure you want to clear all patient data?';
+      
+    if (window.confirm(confirmMessage)) {
+      setTranscript(t(lang, 'waitingTranscript'));
+      setRecommendation('');
+      setPcr({});
+      setSessionHistory([]);
+      setStatus(t(lang, 'statusDefault'));
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      
+      // Stop recording if it was active
+      if (isRecording && recognitionRef.current) {
+        recognitionRef.current.stop();
+        setIsRecording(false);
+      }
     }
   };
 
@@ -219,17 +241,33 @@ export default function Index() {
                 
                 <div className="flex flex-col justify-end">
                   <label className="text-xs font-semibold text-muted-foreground mb-1 uppercase">
-                    {lang === 'es' ? 'Nivel de Resumen' : 'Summary Detail'}
+                    {lang === 'es' ? 'Nivel' : 'Detail'}
                   </label>
                   <select
                     value={detailLevel}
                     onChange={(e) => setDetailLevel(e.target.value as 'simple' | 'detailed')}
-                    disabled={isProcessing || isCoolingDown}
+                    disabled={isProcessing || isCoolingDown || isRecording}
                     className="h-10 px-3 py-2 bg-background border border-input rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
                   >
-                    <option value="simple">{lang === 'es' ? 'Simple (Breve)' : 'Simple (Brief)'}</option>
-                    <option value="detailed">{lang === 'es' ? 'Detallado (Completo)' : 'Detailed (Comprehensive)'}</option>
+                    <option value="simple">{lang === 'es' ? 'Simple' : 'Simple'}</option>
+                    <option value="detailed">{lang === 'es' ? 'Detallado' : 'Detailed'}</option>
                   </select>
+                </div>
+
+                {/* NEW: The New Patient Button */}
+                <div className="flex flex-col justify-end">
+                  <button 
+                    onClick={handleClear}
+                    disabled={isRecording || isProcessing}
+                    className="h-10 px-4 py-2 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white border border-red-500/30 rounded-md text-sm font-bold shadow-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 6h18"></path>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                    {lang === 'es' ? 'Nuevo Paciente' : 'New Patient'}
+                  </button>
                 </div>
               </div>
 
