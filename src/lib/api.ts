@@ -1,4 +1,5 @@
-import textbookData from './textbook_index.json';
+// REMOVED: import textbookData from './textbook_index.json';
+// We now load this dynamically from the public folder so Vite doesn't crash on build.
 
 export interface PCRData {
   chiefComplaint?: string;
@@ -20,6 +21,27 @@ const GROQ_API_KEY = "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";
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 /**
+ * TEXTBOOK DATA LOADER
+ * Holds the textbook data in memory and fetches it from the public folder once.
+ */
+let textbookData: any[] = [];
+let isTextbookLoaded = false;
+
+export async function loadTextbookData() {
+  if (isTextbookLoaded) return;
+  try {
+    const response = await fetch('/textbook_index.json');
+    if (!response.ok) throw new Error("File not found or unreadable.");
+    textbookData = await response.json();
+    isTextbookLoaded = true;
+  } catch (error) {
+    console.warn("Failed to load or parse textbook JSON from public folder:", error);
+    // Fallback to empty array so the app doesn't crash, it just won't have citations.
+    textbookData = []; 
+  }
+}
+
+/**
  * TEXTBOOK SEARCH ENGINE
  * Scans the local index for relevant chunks and returns them as an array.
  */
@@ -28,11 +50,13 @@ function getRelevantChunks(transcript: string): string[] {
   
   const keywords = transcript.toLowerCase().split(/\W+/).filter(w => w.length > 4);
   
-  const matches = (textbookData as any[])
+  const matches = textbookData
     .map(chunk => {
       let score = 0;
+      // Added safety check in case a chunk is missing the 'content' field
+      const content = chunk.content ? String(chunk.content).toLowerCase() : "";
       keywords.forEach(word => {
-        if (chunk.content.toLowerCase().includes(word)) score++;
+        if (content.includes(word)) score++;
       });
       return { ...chunk, score };
     })
@@ -52,6 +76,9 @@ export async function processTranscript(
   detailLevel: 'simple' | 'detailed' = 'simple'
 ): Promise<{ pcr: PCRData; recommendation: string }> {
   
+  // Ensure the textbook data is loaded before processing
+  await loadTextbookData();
+
   const chunks = getRelevantChunks(fullContext);
   const relevantProtocolsText = chunks.join('\n---\n');
 
