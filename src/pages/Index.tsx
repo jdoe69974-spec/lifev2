@@ -20,6 +20,10 @@ export default function Index() {
   const [lang, setLang] = useState<Language>('en');
   const [dark, setDark] = useState(true);
   const [county, setCounty] = useState('Washington');
+  
+  // NEW: State for tracking our detailed/simple mode
+  const [detailLevel, setDetailLevel] = useState<'simple' | 'detailed'>('simple');
+  
   const [isRecording, setIsRecording] = useState(false);
   const [status, setStatus] = useState('');
   const [transcript, setTranscript] = useState('');
@@ -27,7 +31,6 @@ export default function Index() {
   const [pcr, setPcr] = useState<PCRData>({});
   const [sessionHistory, setSessionHistory] = useState<SessionEntry[]>([]);
   
-  // We removed the audioUrl state, as the browser speaks directly now!
   const [isPlaying, setIsPlaying] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -55,7 +58,6 @@ export default function Index() {
     return ctx.trim();
   }, [sessionHistory]);
 
-  // Updated to use the local browser TTS
   const handlePlay = async () => {
     if (recommendation) {
       setIsPlaying(true);
@@ -73,9 +75,11 @@ export default function Index() {
     try {
       const fullContext = getFullContext(text);
       
+      // NEW: Pass the detailLevel to our updated API function
       const { pcr: newPcr, recommendation: rec } = await processTranscript(
         fullContext, 
-        county || 'Unspecified Arkansas County'
+        county || 'Unspecified Arkansas County',
+        detailLevel 
       );
       
       setPcr(newPcr);
@@ -97,7 +101,6 @@ export default function Index() {
 
       setSessionHistory(prev => [entry, ...prev].slice(0, 2));
 
-      // Trigger the local, offline TTS immediately
       setStatus(t(lang, 'ttsReady'));
       setIsPlaying(true);
       await speakText(rec, lang === 'es' ? 'es-US' : 'en-US');
@@ -109,7 +112,7 @@ export default function Index() {
     } finally {
       setTimeout(() => setIsProcessing(false), 2000);
     }
-  }, [lang, county, getFullContext, isProcessing]);
+  }, [lang, county, detailLevel, getFullContext, isProcessing]); // Added detailLevel to dependencies
 
   const toggleRecording = useCallback(() => {
     if (!('webkitSpeechRecognition' in window)) {
@@ -122,7 +125,6 @@ export default function Index() {
       return;
     }
 
-    // Stop any AI audio from playing when the user starts speaking again
     window.speechSynthesis.cancel();
     setIsPlaying(false);
 
@@ -175,7 +177,28 @@ export default function Index() {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="space-y-6">
             <div className="p-5 bg-card rounded-xl shadow-lg border border-border">
-              <CountySelect lang={lang} value={county} onChange={setCounty} />
+              
+              {/* NEW: Added a Flex container to hold the County Select and Detail Toggle side-by-side */}
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <div className="flex-1">
+                  <CountySelect lang={lang} value={county} onChange={setCounty} />
+                </div>
+                
+                <div className="flex flex-col justify-end">
+                  <label className="text-xs font-semibold text-muted-foreground mb-1 uppercase">
+                    {lang === 'es' ? 'Nivel de Resumen' : 'Summary Detail'}
+                  </label>
+                  <select
+                    value={detailLevel}
+                    onChange={(e) => setDetailLevel(e.target.value as 'simple' | 'detailed')}
+                    className="h-10 px-3 py-2 bg-background border border-input rounded-md text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="simple">{lang === 'es' ? 'Simple (Breve)' : 'Simple (Brief)'}</option>
+                    <option value="detailed">{lang === 'es' ? 'Detallado (Completo)' : 'Detailed (Comprehensive)'}</option>
+                  </select>
+                </div>
+              </div>
+
               <VoiceInput
                 lang={lang}
                 isRecording={isRecording}
@@ -184,11 +207,12 @@ export default function Index() {
                 onToggle={toggleRecording}
               />
             </div>
+            
             <AIGuidance
               lang={lang}
               recommendation={recommendation}
               isPlaying={isPlaying}
-              canPlay={!!recommendation} // Only enable play button if there is text to speak!
+              canPlay={!!recommendation}
               onPlay={handlePlay}
             />
           </div>
